@@ -1,0 +1,232 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="security_audit_title">Security Audit</string>
+    <string name="security_audit_description">View or clear security events saved by the kernel.</string>
+    <string name="security_audit_open">View records</string>
+    <string name="security_audit_empty">No security events recorded.</string>
+    <string name="security_audit_unavailable">No audit storage is available. Enable Security Audit in BootMenu to start recording.</string>
+    <string name="security_audit_clear">Clear records</string>
+    <string name="security_audit_confirm">Clear all saved security events?</string>
+    <string name="security_audit_cleared">Security records cleared</string>
+    <string name="meow_su_title">MeowSU preauthorization</string>
+    <string name="meow_su_description">Selected apps may request full root for this boot. All grants clear on restart.</string>
+    <string name="meow_su_apps">App root access</string>
+    <string name="app_name" translatable="false">Meow Kernel manager</string>
+    <string name="nav_home">"Overview"</string>
+    <string name="nav_boot">"Boot settings"</string>
+    <string name="nav_tee">"TEE spoof"</string>
+    <string name="nav_process">"Processes"</string>
+    <string name="nav_controls">"Controls"</string>
+    <string name="nav_debug">"Debug"</string>
+    <string name="nav_su">"SU"</string>
+    <string name="su_search_hint">"Search apps or packages"</string>
+    <string name="su_granted_count">"%1$d of %2$d apps allowed"</string>
+    <string name="su_empty_search">"No matching apps"</string>
+    <string name="su_loading">"Reading kernel grants…"</string>
+    <string name="su_toggle_description">"Root access for %1$s"</string>
+    <string name="su_unavailable">"MeowSU is not active for this boot"</string>
+    <string name="msg_this_kernel_does_not_support_api_1" formatted="false">"This kernel does not support API 1"</string>
+    <string name="msg_this_interface_requires_root_and_is_not" formatted="false">"This interface requires root and is not supported by this app"</string>
+    <string name="msg_kernel_interface_paths_do_not_match_api" formatted="false">"Kernel interface paths do not match API 1"</string>
+    <string name="msg_the_uid_lock_interface_is_incompatible" formatted="false">"The UID lock interface is incompatible"</string>
+    <string name="msg_this_feature_is_disabled_in_the_current" formatted="false">"This feature is disabled in the current kernel"</string>
+    <string name="msg_the_lock_list_format_is_incompatible" formatted="false">"The lock list format is incompatible"</string>
+    <string name="msg_invalid_lock_rule_format" formatted="false">"Invalid lock rule format"</string>
+    <string name="msg_invalid_lock_rule_parameters" formatted="false">"Invalid lock rule parameters"</string>
+    <string name="msg_invalid_uid_or_nice_value" formatted="false">"Invalid UID or nice value"</string>
+    <string name="msg_the_lock_rule_changed_refresh_the_state" formatted="false">"The lock rule changed; refresh the state"</string>
+    <string name="msg_invalid_application_uid" formatted="false">"Invalid application UID"</string>
+    <string name="msg_the_rule_was_set_again_refresh_the" formatted="false">"The rule was set again; refresh the state"</string>
+    <string name="msg_app_uid" formatted="false">"App UID "</string>
+    <string name="msg_cpu_state_format_mismatch" formatted="false">"CPU state format mismatch"</string>
+    <string name="msg_invalid_cpu_number_range" formatted="false">"Invalid CPU number range"</string>
+    <string name="msg_invalid_ttl_state" formatted="false">"Invalid TTL state"</string>
+    <string name="msg_the_fault_policy_interface_is_disabled" formatted="false">"The fault policy interface is disabled"</string>
+    <string name="msg_unsupported_fault_action" formatted="false">"Unsupported fault action"</string>
+    <string name="msg_ramdump_is_not_ready" formatted="false">"Ramdump is not ready"</string>
+    <string name="msg_invalid_priority_parameters" formatted="false">"Invalid priority parameters"</string>
+    <string name="msg_the_interface_response_is_too_large" formatted="false">"The interface response is too large"</string>
+    <string name="msg_the_command_is_too_long" formatted="false">"The command is too long"</string>
+    <string name="msg_the_kernel_did_not_receive_the_complete" formatted="false">"The kernel did not receive the complete command"</string>
+    <string name="msg_operation_failed_refresh_the_state_and_try" formatted="false">"Operation failed; refresh the state and try again"</string>
+    <string name="msg_the_target_changed_refresh_and_select_it" formatted="false">"The target changed; refresh and select it again"</string>
+    <string name="msg_the_process_or_thread_has_exited" formatted="false">"The process or thread has exited"</string>
+    <string name="msg_the_target_or_scheduling_policy_does_not" formatted="false">"The target or scheduling policy does not support this operation"</string>
+    <string name="msg_the_cpu_is_busy_or_at_least" formatted="false">"The CPU is busy or at least one active core must remain"</string>
+    <string name="msg_the_system_denied_this_operation_actual_state" formatted="false">"The system denied this operation; actual state has been refreshed"</string>
+    <string name="msg_another_policy_changed_the_priority_check_the" formatted="false">"Another policy changed the priority; check the latest state"</string>
+    <string name="msg_the_thread_count_or_command_length_exceeds" formatted="false">"The thread count or command length exceeds the limit"</string>
+    <string name="msg_operation_failed_errno" formatted="false">"Operation failed (errno "</string>
+    <string name="msg_check_the_actual_state" formatted="false">"); check the actual state"</string>
+    <string name="msg_checking_kernel" formatted="false">"Checking kernel..."</string>
+    <string name="msg_refresh" formatted="false">"Refresh"</string>
+    <string name="msg_appearance" formatted="false">"Appearance"</string>
+    <string name="msg_about_meow_kernel_manager" formatted="false">"About Meow Kernel manager"</string>
+    <string name="msg_processes" formatted="false">"Processes"</string>
+    <string name="msg_controls" formatted="false">"Controls"</string>
+    <string name="msg_debug" formatted="false">"Debug"</string>
+    <string name="msg_check_compatibility_first" formatted="false">"Check compatibility first"</string>
+    <string name="msg_check_again" formatted="false">"Check again"</string>
+    <string name="msg_built_for_your_kernel" formatted="false">"Built for your kernel"</string>
+    <string name="msg_checks_the_kernel_identity_api_version_and" formatted="false">"Checks the kernel identity, API version and available capabilities. Controls remain disabled until compatibility is confirmed."</string>
+    <string name="msg_api_1_compatible_no_root" formatted="false">"API 1 - Compatible - No root"</string>
+    <string name="msg_kernel_ready" formatted="false">"Running"</string>
+    <string name="msg_online_cores" formatted="false">"Online cores"</string>
+    <string name="msg_active_cores" formatted="false">"Active cores"</string>
+    <string name="msg_visible_processes" formatted="false">"Visible processes"</string>
+    <string name="msg_available_features" formatted="false">"Available features"</string>
+    <string name="msg_cpu_control" formatted="false">"CPU control"</string>
+    <string name="msg_view_online_and_active_state_and_control" formatted="false">"View online and active state, and control individual cores"</string>
+    <string name="msg_process_priority" formatted="false">"Process priority"</string>
+    <string name="msg_adjust_nice_by_process_or_thread" formatted="false">"Adjust nice by process or thread"</string>
+    <string name="msg_forwarding_ttl" formatted="false">"Forwarding TTL"</string>
+    <string name="msg_control_software_ipv4_forwarding_behavior" formatted="false">"Control software IPv4 forwarding behavior"</string>
+    <string name="msg_fault_policy" formatted="false">"Fault policy"</string>
+    <string name="msg_recoverable_oops_behavior_and_actions_after_panic" formatted="false">"Recoverable Oops behavior and actions after panic"</string>
+    <string name="msg_this_boot_session" formatted="false">"This boot session"</string>
+    <string name="msg_changes_are_read_back_from_the_kernel" formatted="false">"Changes are read back from the kernel. Settings reset after reboot; old process priorities are not replayed automatically."</string>
+    <string name="msg_copy_kernel_information" formatted="false">"Copy kernel information"</string>
+    <string name="msg_meow_kernel_information" formatted="false">"Meow kernel information"</string>
+    <string name="msg_kernel_information_copied" formatted="false">"Kernel information copied"</string>
+    <string name="msg_available" formatted="false">"Available"</string>
+    <string name="msg_disabled" formatted="false">"Disabled"</string>
+    <string name="msg_the_process_interface_is_disabled" formatted="false">"The process interface is disabled"</string>
+    <string name="msg_search_apps_process_names_pids_or_uids" formatted="false">"Search apps, process names, PIDs or UIDs"</string>
+    <string name="msg_apps" formatted="false">"Apps"</string>
+    <string name="msg_all" formatted="false">"All"</string>
+    <string name="msg_system" formatted="false">"System"</string>
+    <string name="msg_adjusted" formatted="false">"Adjusted"</string>
+    <string name="msg_sort" formatted="false">"Sort"</string>
+    <string name="msg_sort_processes" formatted="false">"Sort processes"</string>
+    <string name="msg_app_name" formatted="false">"App name"</string>
+    <string name="msg_process_id" formatted="false">"Process ID"</string>
+    <string name="msg_priority" formatted="false">"Priority"</string>
+    <string name="msg_thread_count" formatted="false">"Thread count"</string>
+    <string name="msg_view_uid_locks" formatted="false">"View UID locks"</string>
+    <string name="msg_reading_processes" formatted="false">"Reading processes..."</string>
+    <string name="msg_auto" formatted="false">"Auto"</string>
+    <string name="msg_refresh_every_three_seconds_pauses_when_you" formatted="false">"Refresh every three seconds; pauses when you leave this page"</string>
+    <string name="msg_no_matching_processes" formatted="false">"No matching processes"</string>
+    <string name="msg_reading_processes_83" formatted="false">"Reading processes..."</string>
+    <string name="msg_processes_84" formatted="false">" processes - "</string>
+    <string name="msg_waiting_for_refresh" formatted="false">"Waiting for refresh"</string>
+    <string name="msg_cpu_and_network" formatted="false">"CPU and network"</string>
+    <string name="msg_uses_public_interfaces_and_reads_back_the" formatted="false">"Uses public interfaces and reads back the actual state after changes."</string>
+    <string name="msg_cpu_cores" formatted="false">"CPU cores"</string>
+    <string name="msg_state_temporarily_unavailable" formatted="false">"State temporarily unavailable"</string>
+    <string name="msg_online" formatted="false">"Online "</string>
+    <string name="msg_active" formatted="false">" - Active "</string>
+    <string name="msg_detected" formatted="false">" - Detected "</string>
+    <string name="msg_cores" formatted="false">" cores"</string>
+    <string name="msg_online_state" formatted="false">" online state"</string>
+    <string name="msg_at_least_one_active_core_must_remain" formatted="false">"At least one active core must remain"</string>
+    <string name="msg_cpu_state_updated" formatted="false">"CPU state updated"</string>
+    <string name="msg_active_97" formatted="false">"Active"</string>
+    <string name="msg_online_not_active" formatted="false">"Online - Not active"</string>
+    <string name="msg_offline" formatted="false">"Offline"</string>
+    <string name="msg_cpu_changes_affect_the_whole_device_vendor" formatted="false">"CPU changes affect the whole device. Vendor thermal control may also change the actual state."</string>
+    <string name="msg_preserve_forwarding_ttl" formatted="false">"Preserve forwarding TTL"</string>
+    <string name="msg_applies_only_to_software_ipv4_forwarding" formatted="false">"Applies only to software IPv4 forwarding"</string>
+    <string name="msg_ttl_policy_updated" formatted="false">"TTL policy updated"</string>
+    <string name="msg_when_disabled_ttl_decreases_normally_does_not" formatted="false">"When disabled, TTL decreases normally. Does not change the initial local TTL or enable hotspot/forwarding."</string>
+    <string name="msg_the_fault_policy_interface_is_disabled_105" formatted="false">"The fault policy interface is disabled"</string>
+    <string name="msg_fault_handling" formatted="false">"Fault handling"</string>
+    <string name="msg_configure_behavior_for_this_boot_session_does" formatted="false">"Applies to this boot only; does not trigger a fault."</string>
+    <string name="msg_continue_after_recoverable_oops" formatted="false">"Continue after recoverable Oops"</string>
+    <string name="msg_severe_faults_still_enter_panic" formatted="false">"Severe faults still panic"</string>
+    <string name="msg_action_after_panic" formatted="false">"After panic"</string>
+    <string name="msg_normal_reboot" formatted="false">"Normal reboot"</string>
+    <string name="msg_ramdump_is_ready_a_usb_dump_is" formatted="false">"Ramdump ready; dumping only on a real panic."</string>
+    <string name="msg_ramdump_is_not_ready_only_normal_reboot" formatted="false">"Ramdump unavailable; normal reboot only."</string>
+    <string name="msg_apply_settings" formatted="false">"Apply settings"</string>
+    <string name="panic_auth_title" formatted="false">"Confirm screen lock"</string>
+    <string name="panic_auth_description" formatted="false">"Verify your screen lock before applying fault handling."</string>
+    <string name="msg_fault_policy_applied" formatted="false">"Applied"</string>
+    <string name="msg_defaults_restored_after_reboot" formatted="false">"Defaults restored after reboot"</string>
+    <string name="msg_by_default_oops_does_not_continue_and" formatted="false">"Oops does not continue by default; panic reboots. Settings are not persisted."</string>
+    <string name="msg_this_feature_is_not_enabled_in_the" formatted="false">"This feature is not enabled in the current kernel capability list."</string>
+    <string name="msg_cannot_connect_to_a_compatible_kernel" formatted="false">"Cannot connect to a compatible kernel\n"</string>
+    <string name="msg_read_failed_tap_refresh_at_the_top" formatted="false">"Read failed - Tap refresh at the top"</string>
+    <string name="msg_follow_system" formatted="false">"Follow system"</string>
+    <string name="msg_light" formatted="false">"Light"</string>
+    <string name="msg_dark" formatted="false">"Dark"</string>
+    <string name="msg_cancel" formatted="false">"Cancel"</string>
+    <string name="msg_a_no_root_console_for_the_madebyqweovo" formatted="false">"A no-root console for the MadeByQWEOVO kernel.\n\nUses public API 1 and reads back actual state after changes.\n\nKernel identity: qweovo.secret_kernel"</string>
+    <string name="msg_got_it" formatted="false">"Got it"</string>
+    <string name="msg_threads_uid" formatted="false">" threads   -   UID "</string>
+    <string name="msg_lock_this_app_s_priority" formatted="false">"Lock this app\'s priority"</string>
+    <string name="msg_applies_by_uid_to_existing_and_future" formatted="false">"Applies by UID to existing and future normal/batch threads. Apps sharing a UID share the rule. Survives app restarts; cleared after device reboot."</string>
+    <string name="msg_scope" formatted="false">"Scope"</string>
+    <string name="msg_whole_process" formatted="false">"Whole process"</string>
+    <string name="msg_single_thread" formatted="false">"Single thread"</string>
+    <string name="msg_select_thread" formatted="false">"Select thread"</string>
+    <string name="msg_target_nice_lower_means_higher_priority" formatted="false">"Target nice: lower means higher priority"</string>
+    <string name="msg_20_higher_priority" formatted="false">"-20 - Higher priority"</string>
+    <string name="msg_19_lower_priority" formatted="false">"19 - Lower priority"</string>
+    <string name="msg_lower_nice_means_higher_scheduling_priority_without" formatted="false">"Lower nice means higher scheduling priority. Without a lock, only current threads change. Locks constrain nice for normal/batch threads; real-time policies retain system behavior."</string>
+    <string name="msg_refresh_state" formatted="false">"Refresh state"</string>
+    <string name="msg_apply_priority" formatted="false">"Apply priority"</string>
+    <string name="msg_the_target_is_checked_before_writing_actual" formatted="false">"The target is checked before writing; actual state is read back afterward"</string>
+    <string name="msg_the_original_thread_exited_select_another_thread" formatted="false">"The original thread exited; select another thread"</string>
+    <string name="msg_unlock_uid" formatted="false">"Unlock UID"</string>
+    <string name="msg_apply_and_lock_uid" formatted="false">"Apply and lock UID"</string>
+    <string name="msg_threads" formatted="false">" threads\n"</string>
+    <string name="msg_this_process_exited_its_old_pid_will" formatted="false">"This process exited; its old PID will not be rebound"</string>
+    <string name="msg_this_uid_is_not_locked" formatted="false">"This UID is not locked"</string>
+    <string name="msg_this_uid_is_locked_at_nice" formatted="false">"This UID is locked at nice "</string>
+    <string name="msg_unlocking_keeps_the_current_value_and_allows" formatted="false">" - Unlocking keeps the current value and allows system changes"</string>
+    <string name="msg_applies_to_this_uid_s_normal_batch" formatted="false">" - Applies to this UID\'s normal/batch threads"</string>
+    <string name="msg_the_current_target_is_unavailable_select_another" formatted="false">"The current target is unavailable; select another thread"</string>
+    <string name="msg_current_nice" formatted="false">" - Current nice "</string>
+    <string name="msg_thread_values_differ" formatted="false">" - Thread values differ"</string>
+    <string name="msg_this_process_exited_return_to_the_list" formatted="false">"This process exited; return to the list and select a new target"</string>
+    <string name="msg_actual_state_refreshed" formatted="false">"Actual state refreshed"</string>
+    <string name="msg_checking_target_and_applying" formatted="false">"Checking target and applying..."</string>
+    <string name="msg_locked_at_nice" formatted="false">" locked at nice "</string>
+    <string name="msg_remains_effective_after_the_app_restarts" formatted="false">"; remains effective after the app restarts"</string>
+    <string name="msg_uid_unlocked_current_nice_is_retained_the" formatted="false">"UID unlocked. Current nice is retained; the system may adjust it again"</string>
+    <string name="msg_processed" formatted="false">"Processed "</string>
+    <string name="msg_threads_actual_state_refreshed" formatted="false">" threads; actual state refreshed"</string>
+    <string name="msg_threads_161" formatted="false">" threads; "</string>
+    <string name="msg_locked" formatted="false">"Locked "</string>
+    <string name="msg_the_process_table_is_empty" formatted="false">"The process table is empty"</string>
+    <string name="msg_process_interface_version_mismatch_missing" formatted="false">"Process interface version mismatch: missing "</string>
+    <string name="msg_the_target_process_changed_refresh_and_select" formatted="false">"The target process changed; refresh and select it again"</string>
+    <string name="msg_this_thread_s_scheduling_policy_does_not" formatted="false">"This thread\'s scheduling policy does not support nice adjustment"</string>
+    <string name="msg_the_target_exited_refresh_the_list" formatted="false">"The target exited; refresh the list"</string>
+    <string name="msg_normal" formatted="false">"Normal"</string>
+    <string name="msg_fifo_real_time" formatted="false">"FIFO real-time"</string>
+    <string name="msg_rr_real_time" formatted="false">"RR real-time"</string>
+    <string name="msg_batch" formatted="false">"Batch"</string>
+    <string name="msg_idle" formatted="false">"Idle"</string>
+    <string name="msg_scheduling_policy" formatted="false">"Scheduling policy "</string>
+    <string name="msg_uid_priority_locks" formatted="false">"UID priority locks"</string>
+    <string name="msg_rules_remain_after_an_app_exits_apps" formatted="false">"Rules remain after an app exits. Apps sharing a UID share the rule; rules clear after device reboot. Unlocking keeps the current nice value."</string>
+    <string name="msg_reading_kernel_rules" formatted="false">"Reading kernel rules..."</string>
+    <string name="msg_no_locked_apps" formatted="false">"No locked apps"</string>
+    <string name="msg_locked_nice" formatted="false">" - Locked nice "</string>
+    <string name="msg_processes_running" formatted="false">" processes running"</string>
+    <string name="msg_edit_nice" formatted="false">"Edit nice"</string>
+    <string name="msg_unlock" formatted="false">"Unlock"</string>
+    <string name="msg_refresh_rules" formatted="false">"Refresh rules"</string>
+    <string name="msg_apply_and_lock" formatted="false">"Apply and lock"</string>
+    <string name="msg_unlocked_uid" formatted="false">"Unlocked UID "</string>
+    <string name="msg_priority_185" formatted="false">" priority"</string>
+    <string name="msg_updated_uid" formatted="false">"Updated UID "</string>
+    <string name="msg_rule" formatted="false">" rule"</string>
+    <string name="sukisu_next_title">Authorize root for the next boot</string>
+    <string name="sukisu_next_description">Confirm your screen lock to make SukiSU selectable in BootMenu for the next boot.</string>
+    <string name="sukisu_auth_title">Confirm screen lock</string>
+    <string name="sukisu_auth_description">Use your PIN, pattern, or password to allow SukiSU on the next boot.</string>
+    <string name="sukisu_auth_setup_required">Set a screen lock in Android settings before enabling this option.</string>
+    <string name="sukisu_auth_unsupported">This option requires Android 11 or later to verify your screen lock.</string>
+    <string name="sukisu_auth_failed">Could not verify your screen lock. Try again.</string>
+    <string name="sukisu_next_armed">A root mode can be selected in BootMenu on the next boot.</string>
+    <string name="sukisu_next_disarmed">Next-boot SukiSU grant cleared</string>
+    <string name="sukisu_next_invalid_state">Invalid SukiSU grant state</string>
+    <string name="sukisu_next_changed">The SukiSU grant changed. Refresh and try again.</string>
+    <string name="sukisu_scan_instructions">Scan the challenge with Meow Authenticator, confirm on your phone, then scan the signed response.</string>
+    <string name="sukisu_show_challenge">Show challenge QR</string>
+    <string name="sukisu_scan_response">Scan signed response</string>
+    <string name="sukisu_invalid_signature">The response is invalid for this boot challenge.</string>
+</resources>

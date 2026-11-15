@@ -1,0 +1,18 @@
+<resources>
+    <string name="app_name">Meow Authenticator</string>
+    <string name="no_key">Import the encrypted authorization key to approve SukiSU boot requests.</string>
+    <string name="key_ready">Authorization key in Android Keystore\n%1$s</string>
+    <string name="key_unavailable">The authorization key is unavailable.</string>
+    <string name="import_key">Import authorization key</string>
+    <string name="import_password">Import password</string>
+    <string name="import_confirm">Import</string>
+    <string name="import_failed">Import failed. Check the PKCS#12 file, its password and your secure screen lock.</string>
+    <string name="hardware_required">This phone could not import the key with hardware-enforced authentication.</string>
+    <string name="scan_challenge">Scan tablet challenge</string>
+    <string name="invalid_challenge">This QR code is not a SukiSU challenge.</string>
+    <string name="wrong_key">The challenge does not match this authorization key.</string>
+    <string name="approve_title">Authorize SukiSU for the next boot</string>
+    <string name="approve_description">Confirm only a request you started on the tablet. Key %1$s</string>
+    <string name="sign_failed">Could not sign this challenge.</string>
+    <string name="response_title">Scan this with the tablet Manager</string>
+</resources>

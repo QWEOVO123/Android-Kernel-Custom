@@ -1,0 +1,9 @@
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@+id/nav_home" android:title="@string/nav_home" android:icon="@drawable/ic_home" />
+    <item android:id="@+id/nav_boot" android:title="@string/nav_boot" android:icon="@drawable/ic_power" />
+    <item android:id="@+id/nav_tee" android:title="@string/nav_tee" android:icon="@drawable/ic_key" />
+    <item android:id="@+id/nav_su" android:title="@string/nav_su" android:icon="@drawable/ic_su" />
+    <item android:id="@+id/nav_process" android:title="@string/nav_process" android:icon="@drawable/ic_process" />
+    <item android:id="@+id/nav_controls" android:title="@string/nav_controls" android:icon="@drawable/ic_tune" />
+    <item android:id="@+id/nav_debug" android:title="@string/nav_debug" android:icon="@drawable/ic_debug" />
+</menu>

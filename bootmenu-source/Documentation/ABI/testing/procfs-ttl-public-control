@@ -1,0 +1,39 @@
+What:		/proc/ttl_ctl
+Date:		October 2026
+Contact:		Custom Android kernel maintainer
+Description:
+		Available with CONFIG_IP_FORWARD_TTL_PUBLIC_CONTROL=y. The kernel
+		creates this node with mode 0666. Any user/application can read
+		or change the opener's network namespace IPv4 forwarding TTL
+		mode without root, capabilities, or a UID allowlist.
+
+		Read returns "0\n" (normal decrement, default) or "1\n" (preserve).
+		Write one of "0" or "1", optionally surrounded by whitespace.
+		The maximum write size is 32 bytes. Embedded NULs, multiple
+		values/commands, and other numeric values are rejected without
+		changing the setting. Zero-length writes do nothing. Successful
+		writes return their byte count; invalid input returns EINVAL,
+		oversized input E2BIG, allocation failure ENOMEM, and bad user
+		pointers EFAULT.
+
+		This is an alias for net.ipv4.ip_forward_ttl_mode, not a separate
+		setting. Writes to either interface are visible through the other.
+		The sysctl retains its existing permissions. If SYSCTL is disabled,
+		the public proc interface still controls the same forwarding field.
+
+		Each open file pins the opener's network namespace until close.
+		Passing an open descriptor or calling setns() does not retarget
+		it. New namespaces start in mode 0. Concurrent writes are atomic
+		at the mode-field level; no exclusive controller is imposed.
+
+		All existing forwarding paths and TTL expiry checks are retained.
+		Ordinary forwarding still rejects TTL <= 1 in either mode. IPv6
+		Hop Limit, local output TTL, hardware/vendor paths, and BPF
+		forwarding that bypass these software hooks are not controlled.
+
+		SELinux exemptions use this node's private proc inode marker,
+		shared with the dedicated public-control hook dispatch. They
+		permit read/write, getattr and zero-length O_TRUNC handling for
+		this inode only. They do not disable enforcing mode, grant root,
+		permit execute/owner/mode changes, or exempt arbitrary proc or
+		sysctl files. Read-only/hidden mounts and other LSMs still apply.

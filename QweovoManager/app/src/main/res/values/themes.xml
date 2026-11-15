@@ -1,0 +1,17 @@
+<resources>
+    <style name="Theme.Qweovo" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">#246953</item><item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorPrimaryContainer">#D4EBDC</item><item name="colorOnPrimaryContainer">#102E23</item>
+        <item name="colorSecondary">#50645A</item><item name="colorSecondaryContainer">#E0EAE1</item>
+        <item name="colorOnSecondaryContainer">#21352A</item><item name="colorSurface">#FAFCF8</item>
+        <item name="colorSurfaceVariant">#E8EEE7</item><item name="colorOnSurface">#1B241F</item>
+        <item name="colorOnSurfaceVariant">#55635A</item><item name="android:colorBackground">#F3F6F0</item>
+        <item name="android:fontFamily">sans</item><item name="android:windowLightStatusBar">true</item>
+        <item name="shapeAppearanceMediumComponent">@style/Shape.Qweovo</item>
+        <item name="shapeAppearanceSmallComponent">@style/Shape.Qweovo.Small</item>
+        <item name="android:windowActionModeOverlay">true</item>
+    </style>
+    <style name="Shape.Qweovo" parent="ShapeAppearance.Material3.MediumComponent"><item name="cornerSize">24dp</item></style>
+    <style name="Shape.Qweovo.Small" parent="ShapeAppearance.Material3.SmallComponent"><item name="cornerSize">16dp</item></style>
+    <color name="launcher_bg">#D4EBDC</color>
+</resources>

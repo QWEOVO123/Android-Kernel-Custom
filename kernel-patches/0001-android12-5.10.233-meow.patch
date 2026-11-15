@@ -1,0 +1,1534 @@
+diff --git a/Documentation/networking/ip-sysctl.rst b/Documentation/networking/ip-sysctl.rst
+index dffda1277d88b941442b5d70f704252350e54a56..3719cd3311205cf8822f91fb0823c7f45f2fe265 100644
+--- a/Documentation/networking/ip-sysctl.rst
++++ b/Documentation/networking/ip-sysctl.rst
+@@ -22,6 +22,34 @@ ip_default_ttl - INTEGER
+ 	forwarded) IP packets. Should be between 1 and 255 inclusive.
+ 	Default: 64 (as recommended by RFC1700)
+ 
++ip_forward_ttl_mode - INTEGER
++	Select the IPv4 TTL policy for software forwarding in this network
++	namespace. Valid values are:
++
++	- 0 - Decrement TTL and update the IPv4 header checksum (default).
++	- 1 - Preserve TTL and leave the checksum unchanged by the TTL policy.
++
++	The policy is read for each packet by ordinary IPv4 forwarding,
++	multicast forwarding, IPVS, Netfilter software flowtable forwarding,
++	and nftables IPv4 neighbour forwarding. Existing TTL expiry checks
++	are unchanged; in particular, ordinary forwarding still rejects
++	packets with TTL less than or equal to one in either mode.
++
++	New network namespaces start in mode 0 independently of the creating
++	namespace. Changes affect subsequent software packet processing and
++	do not require a route or software flowtable flush. Packets already
++	being processed may use the previous setting.
++
++	This does not change IPv6 Hop Limit, locally generated packet TTL,
++	or hardware, BPF, or vendor forwarding paths that bypass these hooks.
++	Other packet rewriting rules may still change TTL or the checksum.
++
++	With CONFIG_IP_FORWARD_TTL_PUBLIC_CONTROL, /proc/ttl_ctl provides
++	an unprivileged alias for this value. Each open descriptor pins the
++	opener's network namespace; the sysctl's own permissions are unchanged.
++
++	Default: 0
++
+ ip_no_pmtu_disc - INTEGER
+ 	Disable Path MTU Discovery. If enabled in mode 1 and a
+ 	fragmentation-required ICMP is received, the PMTU to this
+diff --git a/arch/arm64/configs/gki_defconfig b/arch/arm64/configs/gki_defconfig
+index c79d77da33bc0c2649b906bfa289f9f965bf0a64..878d29d9e1a06146bf2eb4fd1bbb56e8994a98a5 100644
+--- a/arch/arm64/configs/gki_defconfig
++++ b/arch/arm64/configs/gki_defconfig
+@@ -92,6 +92,12 @@ CONFIG_KVM=y
+ CONFIG_CRYPTO_SHA2_ARM64_CE=y
+ CONFIG_CRYPTO_AES_ARM64_CE_BLK=y
+ CONFIG_KPROBES=y
++CONFIG_KSU=y
++CONFIG_KSU_MANUAL_SU=y
++# CONFIG_KPM is not set
++CONFIG_CPU_PUBLIC_CONTROL=y
++CONFIG_IP_FORWARD_TTL_PUBLIC_CONTROL=y
++CONFIG_PROCESS_PUBLIC_CONTROL=y
+ CONFIG_JUMP_LABEL=y
+ CONFIG_SHADOW_CALL_STACK=y
+ CONFIG_LTO_CLANG_FULL=y
+@@ -699,3 +705,8 @@ CONFIG_TRACEFS_DISABLE_AUTOMOUNT=y
+ CONFIG_HIST_TRIGGERS=y
+ CONFIG_FUNCTION_ERROR_INJECTION=y
+ # CONFIG_RUNTIME_TESTING_MENU is not set
++CONFIG_QWEOVO_QCOM_PANIC_RAMDUMP=y
++
++CONFIG_PROCESS_UID_NICE_LOCK=y
++
++CONFIG_QWEOVO_BOOT_MENU=y
+diff --git a/drivers/Kconfig b/drivers/Kconfig
+index dcecc9f6e33f78de53cf18655624b27d2abe76c4..8cae523c94c2eaa85b6a60be476795aad4328923 100644
+--- a/drivers/Kconfig
++++ b/drivers/Kconfig
+@@ -235,4 +235,5 @@ source "drivers/interconnect/Kconfig"
+ source "drivers/counter/Kconfig"
+ 
+ source "drivers/most/Kconfig"
++source "drivers/kernelsu/Kconfig"
+ endmenu
+diff --git a/drivers/Makefile b/drivers/Makefile
+index 5762280377186c47739ed9da226022b061658895..4e218bf0333b1fe7bb9310bb8a58d8d8a414fe3d 100644
+--- a/drivers/Makefile
++++ b/drivers/Makefile
+@@ -189,3 +189,5 @@ obj-$(CONFIG_GNSS)		+= gnss/
+ obj-$(CONFIG_INTERCONNECT)	+= interconnect/
+ obj-$(CONFIG_COUNTER)		+= counter/
+ obj-$(CONFIG_MOST)		+= most/
++
++obj-$(CONFIG_KSU) += kernelsu/
+diff --git a/drivers/base/Kconfig b/drivers/base/Kconfig
+index 8d7001712062eb547be3abd446c85c77fe6f8b0e..ab126c981fdc62230a94a23cab564201213584dc 100644
+--- a/drivers/base/Kconfig
++++ b/drivers/base/Kconfig
+@@ -1,6 +1,22 @@
+ # SPDX-License-Identifier: GPL-2.0
+ menu "Generic Driver Options"
+ 
++config CPU_PUBLIC_CONTROL
++	bool "Unprivileged CPU hotplug control through /proc/cpu_ctl"
++	depends on HOTPLUG_CPU && PROC_FS
++	help
++	  Create a world-readable/writable CPU hotplug control interface.
++	  Any process can online/offline CPUs or set the online CPU list,
++	  without root, a capability, or a UID allowlist. Existing CPU
++	  hotplug serialization, last-active-CPU protection and firmware
++	  restrictions still apply.
++
++	  SELinux permits ordinary read/write access to this exact proc
++	  inode, without changing policy for other files. This deliberately
++	  delegates global CPU availability to unprivileged applications.
++
++	  If unsure, say N.
++
+ config UEVENT_HELPER
+ 	bool "Support for uevent helper"
+ 	help
+diff --git a/drivers/base/Makefile b/drivers/base/Makefile
+index 41369fc7004fdf0f19a23c8245d2c98a771fc7a9..1d0d20d7e91565ca646a7ed0eec171594f2841ba 100644
+--- a/drivers/base/Makefile
++++ b/drivers/base/Makefile
+@@ -8,6 +8,7 @@ obj-y			:= component.o core.o bus.o dd.o syscore.o \
+ 			   topology.o container.o property.o cacheinfo.o \
+ 			   swnode.o
+ obj-$(CONFIG_DEVTMPFS)	+= devtmpfs.o
++obj-$(CONFIG_CPU_PUBLIC_CONTROL) += cpu_public_control.o
+ obj-y			+= power/
+ obj-$(CONFIG_ISA_BUS_API)	+= isa.o
+ obj-y				+= firmware_loader/
+diff --git a/fs/exec.c b/fs/exec.c
+index 4cbc211e90493e6f021e33d7854f84fe03bf48ec..20eb439c27efe012f19ed2670ea66c78a2832977 100644
+--- a/fs/exec.c
++++ b/fs/exec.c
+@@ -1264,6 +1264,21 @@ int begin_new_exec(struct linux_binprm * bprm)
+ 	if (retval)
+ 		goto out;
+ 
++	/*
++	 * This must be done here to ensure that POSIX CPU timers which were
++	 * armed on the current task are dequeued from me::posix_cputimers.
++	 * Otherwise in case of a TID switch the deletion of the related POSIX
++	 * timer would not remove an enqueued timer because the TID lookup
++	 * of the old TID fails.
++	 */
++#ifdef CONFIG_POSIX_TIMERS
++	spin_lock_irq(&me->sighand->siglock);
++	posix_cpu_timers_exit(me);
++	spin_unlock_irq(&me->sighand->siglock);
++	exit_itimers(me);
++	flush_itimer_signals();
++#endif
++
+ 	/*
+ 	 * Must be called _before_ exec_mmap() as bprm->mm is
+ 	 * not visibile until then. This also enables the update
+@@ -1286,14 +1301,6 @@ int begin_new_exec(struct linux_binprm * bprm)
+ 
+ 	bprm->mm = NULL;
+ 
+-#ifdef CONFIG_POSIX_TIMERS
+-	spin_lock_irq(&me->sighand->siglock);
+-	posix_cpu_timers_exit(me);
+-	spin_unlock_irq(&me->sighand->siglock);
+-	exit_itimers(me);
+-	flush_itimer_signals();
+-#endif
+-
+ 	/*
+ 	 * Make the signal table private.
+ 	 */
+diff --git a/fs/pipe.c b/fs/pipe.c
+index 26aecd282de71799e8e8bd4ab023265057c3c215..d34bccc5123e8c1ce906db13d19f0d27c755378c 100644
+--- a/fs/pipe.c
++++ b/fs/pipe.c
+@@ -17,6 +17,7 @@
+ #include <linux/pseudo_fs.h>
+ #include <linux/magic.h>
+ #include <linux/pipe_fs_i.h>
++#include <linux/qweovo_bootmenu.h>
+ #include <linux/uio.h>
+ #include <linux/highmem.h>
+ #include <linux/pagemap.h>
+@@ -460,8 +461,14 @@ pipe_write(struct kiocb *iocb, struct iov_iter *from)
+ 		unsigned int mask = pipe->ring_size - 1;
+ 		struct pipe_buffer *buf = &pipe->bufs[(head - 1) & mask];
+ 		int offset = buf->offset + buf->len;
++		bool can_merge = buf->flags & PIPE_BUF_FLAG_CAN_MERGE;
+ 
+-		if ((buf->flags & PIPE_BUF_FLAG_CAN_MERGE) &&
++		/* Only buffers allocated by pipe_write own a mergeable page. */
++		if (unlikely(can_merge && buf->ops != &anon_pipe_buf_ops)) {
++			qweovo_security_pipe_merge_blocked();
++			can_merge = false;
++		}
++		if (can_merge &&
+ 		    offset + chars <= PAGE_SIZE) {
+ 			ret = pipe_buf_confirm(pipe, buf);
+ 			if (ret)
+diff --git a/fs/proc/bootconfig.c b/fs/proc/bootconfig.c
+index 2e244ada1f970b40dfc11417e5fd43579074d42f..685d93ab3923df6c1b62540653b9da6368b5af02 100644
+--- a/fs/proc/bootconfig.c
++++ b/fs/proc/bootconfig.c
+@@ -6,16 +6,29 @@
+ #include <linux/init.h>
+ #include <linux/printk.h>
+ #include <linux/proc_fs.h>
++#include <linux/qweovo_bootmenu.h>
+ #include <linux/seq_file.h>
+ #include <linux/bootconfig.h>
+ #include <linux/slab.h>
+ 
+ static char *saved_boot_config;
++static size_t verified_boot_state_offset;
++static size_t verified_boot_state_length;
+ 
+ static int boot_config_proc_show(struct seq_file *m, void *v)
+ {
+-	if (saved_boot_config)
++	if (!saved_boot_config)
++		return 0;
++
++	/* The menu commits before Android init imports this view. */
++	if (verified_boot_state_length && qweovo_bootmenu_status_spoofer_enabled()) {
++		seq_write(m, saved_boot_config, verified_boot_state_offset);
++		seq_puts(m, "androidboot.verifiedbootstate = \"green\"\n");
++		seq_puts(m, saved_boot_config + verified_boot_state_offset +
++			 verified_boot_state_length);
++	} else {
+ 		seq_puts(m, saved_boot_config);
++	}
+ 	return 0;
+ }
+ 
+@@ -26,7 +39,7 @@ static int boot_config_proc_show(struct seq_file *m, void *v)
+ static int __init copy_xbc_key_value_list(char *dst, size_t size)
+ {
+ 	struct xbc_node *leaf, *vnode;
+-	char *key, *end = dst + size;
++	char *key, *start = dst, *end = dst + size;
+ 	const char *val;
+ 	char q;
+ 	int ret = 0;
+@@ -36,6 +49,8 @@ static int __init copy_xbc_key_value_list(char *dst, size_t size)
+ 		return -ENOMEM;
+ 
+ 	xbc_for_each_key_value(leaf, val) {
++		char *line = dst;
++
+ 		ret = xbc_node_compose_key(leaf, key, XBC_KEYLEN_MAX);
+ 		if (ret < 0)
+ 			break;
+@@ -62,6 +77,10 @@ static int __init copy_xbc_key_value_list(char *dst, size_t size)
+ 				break;
+ 			dst += ret;
+ 		}
++		if (size && !strcmp(key, "androidboot.verifiedbootstate")) {
++			verified_boot_state_offset = line - start;
++			verified_boot_state_length = dst - line;
++		}
+ 	}
+ out:
+ 	kfree(key);
+diff --git a/fs/proc/generic.c b/fs/proc/generic.c
+index 5898761698c22f27cab0f2215e84dc832c137e8a..c3f45408e2c577e7eb18b963eab011199692d5e0 100644
+--- a/fs/proc/generic.c
++++ b/fs/proc/generic.c
+@@ -13,6 +13,7 @@
+ #include <linux/errno.h>
+ #include <linux/time.h>
+ #include <linux/proc_fs.h>
++#include <linux/magic.h>
+ #include <linux/stat.h>
+ #include <linux/mm.h>
+ #include <linux/module.h>
+@@ -805,6 +806,19 @@ void *PDE_DATA(const struct inode *inode)
+ }
+ EXPORT_SYMBOL(PDE_DATA);
+ 
++/* Safe for generic permission hooks, including pid and sysctl proc inodes. */
++void *proc_inode_data_or_null(const struct inode *inode)
++{
++	struct proc_dir_entry *de;
++
++	if (!inode || !inode->i_sb || !S_ISREG(inode->i_mode) ||
++	    inode->i_sb->s_magic != PROC_SUPER_MAGIC)
++		return NULL;
++
++	de = PDE(inode);
++	return de ? de->data : NULL;
++}
++
+ /*
+  * Pull a user buffer into memory and pass it to the file's write handler if
+  * one is supplied.  The ->write() method is permitted to modify the
+diff --git a/include/linux/proc_fs.h b/include/linux/proc_fs.h
+index 8c892730a1f1527f86aa2f30ddfa8a986c333afb..2d3b06e60fc9254423cb50a8f5b51f49cbb6406e 100644
+--- a/include/linux/proc_fs.h
++++ b/include/linux/proc_fs.h
+@@ -110,6 +110,7 @@ struct proc_dir_entry *proc_create(const char *name, umode_t mode, struct proc_d
+ extern void proc_set_size(struct proc_dir_entry *, loff_t);
+ extern void proc_set_user(struct proc_dir_entry *, kuid_t, kgid_t);
+ extern void *PDE_DATA(const struct inode *);
++void *proc_inode_data_or_null(const struct inode *inode);
+ extern void *proc_get_parent_data(const struct inode *);
+ extern void proc_remove(struct proc_dir_entry *);
+ extern void remove_proc_entry(const char *, struct proc_dir_entry *);
+@@ -183,6 +184,10 @@ static inline struct proc_dir_entry *proc_mkdir_mode(const char *name,
+ static inline void proc_set_size(struct proc_dir_entry *de, loff_t size) {}
+ static inline void proc_set_user(struct proc_dir_entry *de, kuid_t uid, kgid_t gid) {}
+ static inline void *PDE_DATA(const struct inode *inode) {BUG(); return NULL;}
++static inline void *proc_inode_data_or_null(const struct inode *inode)
++{
++	return NULL;
++}
+ static inline void *proc_get_parent_data(const struct inode *inode) { BUG(); return NULL; }
+ 
+ static inline void proc_remove(struct proc_dir_entry *de) {}
+diff --git a/include/net/ip.h b/include/net/ip.h
+index c7edd078d8e3d6a2b3bb4d439050bc3ac704838f..5586650ffccea43279fc6cbd5feb9005637dd726 100644
+--- a/include/net/ip.h
++++ b/include/net/ip.h
+@@ -18,6 +18,7 @@
+ #ifndef _IP_H
+ #define _IP_H
+ 
++#include <linux/qweovo_bootmenu.h>
+ #include <linux/types.h>
+ #include <linux/ip.h>
+ #include <linux/in.h>
+@@ -416,6 +417,16 @@ int ip_decrease_ttl(struct iphdr *iph)
+ 	return --iph->ttl;
+ }
+ 
++/* Keep the generic decrement helper independent of forwarding policy. */
++static inline int ip_forward_update_ttl(const struct net *net, struct iphdr *iph)
++{
++	if (qweovo_bootmenu_custom_enabled() &&
++	    unlikely(READ_ONCE(net->ipv4.sysctl_ip_forward_ttl_mode)))
++		return iph->ttl;
++
++	return ip_decrease_ttl(iph);
++}
++
+ static inline int ip_mtu_locked(const struct dst_entry *dst)
+ {
+ 	const struct rtable *rt = (const struct rtable *)dst;
+diff --git a/include/net/netns/ipv4.h b/include/net/netns/ipv4.h
+index fb94551d03e6e677f8d0d39d27460973ecda50e9..aae03e30585a897e591d8e252a2fbab99a2441d0 100644
+--- a/include/net/netns/ipv4.h
++++ b/include/net/netns/ipv4.h
+@@ -230,6 +230,6 @@ struct netns_ipv4 {
+ 	atomic_t	rt_genid;
+ 	siphash_key_t	ip_id_key;
+ 
+-	ANDROID_KABI_RESERVE(1);
++	ANDROID_KABI_USE(1, int sysctl_ip_forward_ttl_mode);
+ };
+ #endif
+diff --git a/init/Kconfig b/init/Kconfig
+index 3b1595329c96f4888f9318883b94de7517c7a3b5..b433ec3d058fcbeb8430dd922de50503c2d6c7bd 100644
+--- a/init/Kconfig
++++ b/init/Kconfig
+@@ -583,6 +583,17 @@ config BSD_PROCESS_ACCT_V3
+ 	  for processing it. A preliminary version of these tools is available
+ 	  at <http://www.gnu.org/software/acct/>.
+ 
++config PROCESS_PUBLIC_CONTROL
++	bool "Public process information and nice control"
++	depends on PROC_FS
++	help
++	  Provide /proc/process_info (0444) and /proc/process_ctl (0666).
++	  All applications can list tasks visible in their PID namespace and
++	  change userspace fair-scheduler nice values without root or a UID
++	  allowlist. Writes require a task start-time token to detect PID reuse.
++	  Real-time/deadline policies and kernel threads are not modified.
++	  SELinux exceptions apply only to the dedicated proc inode markers.
++
+ config TASKSTATS
+ 	bool "Export task/process statistics through netlink"
+ 	depends on NET
+@@ -2439,3 +2450,38 @@ config ARCH_HAS_SYSCALL_WRAPPER
+ 	def_bool n
+ 
+ source "init/Kconfig.gki"
++
++config QWEOVO_QCOM_PANIC_RAMDUMP
++	bool "QWEOVO public panic policy and cape USB ramdump"
++	depends on ARM64 && OF && ARM_PSCI_FW && MODULES && PROC_FS
++	default n
++	help
++	  Provide public panic_ctl and qweovo_info proc interfaces. Default
++	  to normal reboot after panic; allow optional USB full ramdump and
++	  best-effort continuation of recoverable Oops through panic_on_oops.
++	  Fatal panic never returns. Prepare the verified cape firmware path
++	  without replacing the vendor SCM or download-mode drivers.
++	  qweovo_ramdump=0 disables dump hardware preparation; the policy
++	  and identification interfaces remain available. Runtime settings
++	  reset on reboot unless overridden by kernel command-line options.
++
++config PROCESS_UID_NICE_LOCK
++	bool "Public Android application UID nice locks"
++	depends on PROCESS_PUBLIC_CONTROL && PROC_FS
++	default n
++	help
++	  Expose priority_locks for ordinary Android Apps. Rules cover current
++	  and future normal/batch threads of an application UID until reboot.
++	  Real-time, deadline, idle policies and PI boosts retain native behavior.
++	  Disable the runtime feature with qweovo_uid_nice_lock=0 at boot.
++
++config QWEOVO_BOOT_MENU
++	bool "QWEOVO landscape early boot menu"
++	depends on ARM64 && KSU=y && PROC_FS && HEADERS_INSTALL
++	depends on ASYMMETRIC_PUBLIC_KEY_SUBTYPE=y && CRYPTO_RSA=y && CRYPTO_SHA256=y
++	default n
++	help
++	  Run an embedded static menu before SukiSU preinit modules. PID 1
++	  commits SukiSU and public-control availability once per boot through
++	  a private inherited descriptor. Both remain disabled until chosen.
++	  Choices are not persisted. No kexec or firmware replacement is used.
+diff --git a/kernel/Makefile b/kernel/Makefile
+index dfa6fde12254a740788dbd8a8c87b312785ee520..0634e86f68fe28738728e51e95e04fc2c07f928c 100644
+--- a/kernel/Makefile
++++ b/kernel/Makefile
+@@ -13,6 +13,7 @@ obj-y     = fork.o exec_domain.o panic.o \
+ 	    async.o range.o smpboot.o ucount.o regset.o
+ 
+ obj-$(CONFIG_USERMODE_DRIVER) += usermode_driver.o
++obj-$(CONFIG_PROCESS_PUBLIC_CONTROL) += process_public_control.o
+ obj-$(CONFIG_MODULES) += kmod.o
+ obj-$(CONFIG_MULTIUSER) += groups.o
+ 
+@@ -155,3 +156,13 @@ $(obj)/kheaders_data.tar.xz: FORCE
+ 	$(call cmd,genikh)
+ 
+ clean-files := kheaders_data.tar.xz kheaders.md5
++
++obj-$(CONFIG_QWEOVO_QCOM_PANIC_RAMDUMP) += qweovo_ramdump.o
++
++obj-$(CONFIG_PROCESS_UID_NICE_LOCK) += process_nice_lock.o
++
++obj-$(CONFIG_QWEOVO_BOOT_MENU) += qweovo_bootmenu.o qweovo_meow_su.o qweovo_security_audit.o
++ifneq ($(QWEOVO_SUKISU_KEY_HEADER),)
++CFLAGS_qweovo_bootmenu.o += -include $(QWEOVO_SUKISU_KEY_HEADER)
++$(obj)/qweovo_bootmenu.o: $(QWEOVO_SUKISU_KEY_HEADER)
++endif
+diff --git a/kernel/cred.c b/kernel/cred.c
+index 64bd9efa1c27789b2185d5f1d3f170340baacc4c..4bf0c4d5a993a64254fa48d0a5e9d25f7ae38737 100644
+--- a/kernel/cred.c
++++ b/kernel/cred.c
+@@ -4,6 +4,7 @@
+  * Copyright (C) 2008 Red Hat, Inc. All Rights Reserved.
+  * Written by David Howells (dhowells@redhat.com)
+  */
++#include <linux/process_nice_lock.h>
+ #include <linux/export.h>
+ #include <linux/cred.h>
+ #include <linux/slab.h>
+@@ -513,6 +514,7 @@ int commit_creds(struct cred *new)
+ 	/* release the old obj and subj refs both */
+ 	put_cred(old);
+ 	put_cred(old);
++	process_uid_nice_apply(task);
+ 	return 0;
+ }
+ EXPORT_SYMBOL(commit_creds);
+diff --git a/kernel/exit.c b/kernel/exit.c
+index 10ce05c01413d9a9bfa5e3aa364baf51e40587a1..d011fc865c92a7b1ae1653775544274d42d355d8 100644
+--- a/kernel/exit.c
++++ b/kernel/exit.c
+@@ -202,7 +202,13 @@ static void __exit_signal(struct task_struct *tsk)
+ 	 * doing sigqueue_free() if we have SIGQUEUE_PREALLOC signals.
+ 	 */
+ 	flush_sigqueue(&tsk->pending);
+-	tsk->sighand = NULL;
++
++	/*
++	 * Ensure that all preceeding state is visible. Pairs with
++	 * the smp_acquire__after_ctrl_dep() in the sighand == NULL
++	 * path of lock_task_sighand().
++	 */
++	smp_store_release(&tsk->sighand, NULL);
+ 	spin_unlock(&sighand->siglock);
+ 
+ 	__cleanup_sighand(sighand);
+diff --git a/kernel/locking/rtmutex.c b/kernel/locking/rtmutex.c
+index bfcb9c790f232c45658ac863eff149c00e7c36f1..abf47bca0fedbc4ec55af0dd30449e275cb01070 100644
+--- a/kernel/locking/rtmutex.c
++++ b/kernel/locking/rtmutex.c
+@@ -1062,20 +1062,26 @@ static void mark_wakeup_next_waiter(struct wake_q_head *wake_q,
+  *
+  * Must be called with lock->wait_lock held and interrupts disabled. I must
+  * have just failed to try_to_take_rt_mutex().
++ *
++ * When invoked from rt_mutex_start_proxy_lock() waiter::task != current !
+  */
+ static void remove_waiter(struct rt_mutex *lock,
+ 			  struct rt_mutex_waiter *waiter)
+ {
+ 	bool is_top_waiter = (waiter == rt_mutex_top_waiter(lock));
+ 	struct task_struct *owner = rt_mutex_owner(lock);
++	struct task_struct *waiter_task = waiter->task;
+ 	struct rt_mutex *next_lock;
+ 
+ 	lockdep_assert_held(&lock->wait_lock);
+ 
+-	raw_spin_lock(&current->pi_lock);
++	if (!waiter_task) /* never enqueued */
++		return;
++
++	raw_spin_lock(&waiter_task->pi_lock);
+ 	rt_mutex_dequeue(lock, waiter);
+-	current->pi_blocked_on = NULL;
+-	raw_spin_unlock(&current->pi_lock);
++	waiter_task->pi_blocked_on = NULL;
++	raw_spin_unlock(&waiter_task->pi_lock);
+ 
+ 	/*
+ 	 * Only update priority if the waiter was the highest priority
+@@ -1111,7 +1117,7 @@ static void remove_waiter(struct rt_mutex *lock,
+ 	raw_spin_unlock_irq(&lock->wait_lock);
+ 
+ 	rt_mutex_adjust_prio_chain(owner, RT_MUTEX_MIN_CHAINWALK, lock,
+-				   next_lock, NULL, current);
++				   next_lock, NULL, waiter_task);
+ 
+ 	raw_spin_lock_irq(&lock->wait_lock);
+ }
+@@ -1811,7 +1817,7 @@ int rt_mutex_start_proxy_lock(struct rt_mutex *lock,
+ 
+ 	raw_spin_lock_irq(&lock->wait_lock);
+ 	ret = __rt_mutex_start_proxy_lock(lock, waiter, task);
+-	if (unlikely(ret))
++	if (unlikely(ret < 0))
+ 		remove_waiter(lock, waiter);
+ 	raw_spin_unlock_irq(&lock->wait_lock);
+ 
+diff --git a/kernel/module.c b/kernel/module.c
+index 93fade94f1085b813f8af0e1d18ccd867e1ef27b..bf91281257ba50be3081b4d7e71ffe4498c4a965 100644
+--- a/kernel/module.c
++++ b/kernel/module.c
+@@ -24,6 +24,7 @@
+ #include <linux/elf.h>
+ #include <linux/proc_fs.h>
+ #include <linux/security.h>
++#include <linux/qweovo_bootmenu.h>
+ #include <linux/seq_file.h>
+ #include <linux/syscalls.h>
+ #include <linux/fcntl.h>
+@@ -988,8 +989,11 @@ SYSCALL_DEFINE2(delete_module, const char __user *, name_user,
+ 	char name[MODULE_NAME_LEN];
+ 	int ret, forced = 0;
+ 
+-	if (!capable(CAP_SYS_MODULE) || modules_disabled)
++	if (!capable(CAP_SYS_MODULE) || READ_ONCE(modules_disabled)) {
++		qweovo_security_audit("module-unload", -EPERM);
+ 		return -EPERM;
++	}
++	qweovo_security_audit("module-unload-request", 0);
+ 
+ 	if (strncpy_from_user(name, name_user, MODULE_NAME_LEN-1) < 0)
+ 		return -EFAULT;
+@@ -3851,8 +3855,11 @@ static noinline int do_init_module(struct module *mod)
+ 
+ static int may_init_module(void)
+ {
+-	if (!capable(CAP_SYS_MODULE) || modules_disabled)
++	if (!capable(CAP_SYS_MODULE) || READ_ONCE(modules_disabled)) {
++		qweovo_security_audit("module-load", -EPERM);
+ 		return -EPERM;
++	}
++	qweovo_security_audit("module-load-request", 0);
+ 
+ 	return 0;
+ }
+diff --git a/kernel/panic.c b/kernel/panic.c
+index 30d8da0d43d8f1208bc5552370713714d8682685..1bc2578c25fff82568686456b714d9244a9ac9ef 100644
+--- a/kernel/panic.c
++++ b/kernel/panic.c
+@@ -21,6 +21,7 @@
+ #include <linux/random.h>
+ #include <linux/ftrace.h>
+ #include <linux/reboot.h>
++#include <linux/qweovo_ramdump.h>
+ #include <linux/delay.h>
+ #include <linux/kexec.h>
+ #include <linux/sched.h>
+@@ -382,6 +383,9 @@ void panic(const char *fmt, ...)
+ 
+ 	panic_print_sys_info();
+ 
++	/* Apply the selected action after vendor panic notifiers finish. */
++	qweovo_panic_prepare();
++
+ 	if (!panic_blink)
+ 		panic_blink = no_blink;
+ 
+diff --git a/kernel/sched/core.c b/kernel/sched/core.c
+index 836b8fcc30058392e97b8a3c1d05534afc789823..8e53457531fd603de5f07c337d3ad0edc68f54f9 100644
+--- a/kernel/sched/core.c
++++ b/kernel/sched/core.c
+@@ -7,6 +7,7 @@
+  *  Copyright (C) 1991-2002  Linus Torvalds
+  */
+ #define CREATE_TRACE_POINTS
++#include <linux/process_nice_lock.h>
+ #include <trace/events/sched.h>
+ #undef CREATE_TRACE_POINTS
+ 
+@@ -3558,6 +3559,7 @@ void sched_cgroup_fork(struct task_struct *p, struct kernel_clone_args *kargs)
+ void sched_post_fork(struct task_struct *p)
+ {
+ 	uclamp_post_fork(p);
++	process_uid_nice_apply(p);
+ }
+ 
+ unsigned long to_ratio(u64 period, u64 runtime)
+@@ -5235,11 +5237,17 @@ static inline int rt_effective_prio(struct task_struct *p, int prio)
+ void set_user_nice(struct task_struct *p, long nice)
+ {
+ 	bool queued, running, allowed = false;
+-	int old_prio;
++	int old_prio, locked_nice;
++	long requested_nice;
+ 	struct rq_flags rf;
+ 	struct rq *rq;
+ 
+ 	trace_android_rvh_set_user_nice(p, &nice, &allowed);
++	requested_nice = nice;
++	if ((READ_ONCE(p->policy) == SCHED_NORMAL ||
++	     READ_ONCE(p->policy) == SCHED_BATCH) &&
++	    process_uid_nice_value(p, &locked_nice))
++		nice = locked_nice;
+ 	if ((task_nice(p) == nice || nice < MIN_NICE || nice > MAX_NICE) && !allowed)
+ 		return;
+ 	/*
+@@ -5249,6 +5257,12 @@ void set_user_nice(struct task_struct *p, long nice)
+ 	rq = task_rq_lock(p, &rf);
+ 	update_rq_clock(rq);
+ 
++	/* Recheck UID and rule after acquiring the task runqueue lock. */
++	nice = requested_nice;
++	if ((p->policy == SCHED_NORMAL || p->policy == SCHED_BATCH) &&
++	    process_uid_nice_value(p, &locked_nice))
++		nice = locked_nice;
++
+ 	/*
+ 	 * The RT priorities are set via sched_setscheduler(), but we still
+ 	 * allow the 'normal' nice value to be set - but as expected
+@@ -5464,6 +5478,9 @@ static int __sched_setscheduler(struct task_struct *p,
+ 				const struct sched_attr *attr,
+ 				bool user, bool pi)
+ {
++	const struct sched_attr *requested_attr = attr;
++	struct sched_attr locked_attr;
++	int locked_nice;
+ 	int oldpolicy = -1, policy = attr->sched_policy;
+ 	int retval, oldprio, newprio, queued, running;
+ 	const struct sched_class *prev_class;
+@@ -5476,6 +5493,7 @@ static int __sched_setscheduler(struct task_struct *p,
+ 	/* The pi code expects interrupts enabled */
+ 	BUG_ON(pi && in_interrupt());
+ recheck:
++	attr = requested_attr;
+ 	/* Double check policy once rq lock held: */
+ 	if (policy < 0) {
+ 		reset_on_fork = p->sched_reset_on_fork;
+@@ -5592,6 +5610,14 @@ static int __sched_setscheduler(struct task_struct *p,
+ 	rq = task_rq_lock(p, &rf);
+ 	update_rq_clock(rq);
+ 
++	/* Validate the original request above; constrain the actual fair nice. */
++	if ((policy == SCHED_NORMAL || policy == SCHED_BATCH) &&
++	    process_uid_nice_value(p, &locked_nice)) {
++		locked_attr = *attr;
++		locked_attr.sched_nice = locked_nice;
++		attr = &locked_attr;
++	}
++
+ 	/*
+ 	 * Changing the policy of the stop threads its a very bad idea:
+ 	 */
+diff --git a/kernel/signal.c b/kernel/signal.c
+index 3e4144f1864b4992040128476ed67ffd9b391276..e6e2ff8dbf559a4d13c36b8b691a19ea61548ae8 100644
+--- a/kernel/signal.c
++++ b/kernel/signal.c
+@@ -1377,8 +1377,16 @@ struct sighand_struct *__lock_task_sighand(struct task_struct *tsk,
+ 	rcu_read_lock();
+ 	for (;;) {
+ 		sighand = rcu_dereference(tsk->sighand);
+-		if (unlikely(sighand == NULL))
++		if (unlikely(sighand == NULL)) {
++			/*
++			 * Pairs with the smp_store_release() in
++			 * __exit_signal().  It ensures that all state
++			 * modifications to the task preceeding the store are
++			 * visible to the callers of lock_task_sighand().
++			 */
++			smp_acquire__after_ctrl_dep();
+ 			break;
++		}
+ 
+ 		/*
+ 		 * This sighand can be already freed and even reused, but
+diff --git a/kernel/time/posix-cpu-timers.c b/kernel/time/posix-cpu-timers.c
+index bede1e608d959cee591dd9f11ec8582199dfb1a9..11a0573fa2c8ce57fcec0d5f0f35ece6af743d8e 100644
+--- a/kernel/time/posix-cpu-timers.c
++++ b/kernel/time/posix-cpu-timers.c
+@@ -405,6 +405,113 @@ static int posix_cpu_timer_create(struct k_itimer *new_timer)
+ 	return 0;
+ }
+ 
++/*
++ * Lookup the task via timer->it.cpu.pid and attempt to lock the task's sighand.
++ *
++ * This can race with the reaping of the task:
++ *
++ * CPU0					CPU1
++ *
++ * // Finds task
++ * p = pid_task(pid, pid_type);		__exit_signal(p)
++ *					  lock(p, sighand);
++ *					  posix_cpu_timers*_exit();
++ * sighand = lock_task_sighand(p);	  unhash_task(p);
++ *					  p->sighand = NULL;
++ *					  unlock(sighand);
++ *
++ * In this case sighand is NULL, which means the task and the associated timer
++ * queue cannot be longer accessed safely.
++ *
++ * __exit_signal() invokes posix_cpu_timers_exit() and if the thread group is
++ * dead it also invokes posix_cpu_timers_group_exit(). These functions delete
++ * all pending timers from the related timer queues. The POSIX timers (k_itimer)
++ * themself are still accessible, but not longer connected to the task.
++ *
++ * exec() works slightly differently. The task which exec()'s terminates all
++ * other threads in the thread group and runs __exit_signal() on them. As the
++ * thread group is not dead they only clean up the per task timers via
++ * posix_cpu_timers_exit().
++ *
++ * As the TGID on exec() stays the same per process timers stay queued, if they
++ * are armed. This works without a problem when exec() is done by the thread
++ * group leader. If a non-leader thread exec()'s this can end up in the
++ * following scenario:
++ *
++ * CPU0					CPU1
++ * // Returns old leader
++ * p = pid_task(pid, pid_type);		de_thread()
++ *					switch_leader()
++ *					release_task(old leader)
++ *					  __exit_signal()
++ *					  old_leader->sighand = NULL;
++ * // Returns NULL
++ * sighand = lock_task_sighand(p)
++ *
++ * That's problematic for several functions:
++ *
++ *  - posix_cpu_timer_del(): If the timer is still enqueued on the task the
++ *    underlying k_itimer will be freed which results in a UAF in
++ *    run_posix_cpu_timers() or on timerqueue related add/delete operations.
++ *    If the timer is not enqueued, the failure is harmless
++ *
++ *  - posix_cpu_timer_set(): Independent of the enqueued state that results in a
++ *    transient failure which is user space visible (-ESRCH) for regular posix
++ *    timers. But for the use case in do_cpu_nanosleep() it's the same UAF
++ *    problem just that the timer is allocated on the stack.
++ *
++ *  - posix_cpu_timer_rearm(): Timer is not enqueued at that point, but this
++ *    silently ignores the rearm request, which is a functional problem as the
++ *    timer wont expire anymore.
++ */
++static struct task_struct *timer_lock_sighand(struct k_itimer *timer, unsigned long *flags)
++{
++	enum pid_type type = clock_pid_type(timer->it_clock);
++	struct cpu_timer *ctmr = &timer->it.cpu;
++
++	rcu_read_lock();
++
++	for (;;) {
++		struct task_struct *t = pid_task(timer->it.cpu.pid, type);
++
++		/* Fail if the task cannot be found. */
++		if (!t)
++			break;
++
++		/* Try to lock the task's sighand */
++		if (lock_task_sighand(t, flags)) {
++			rcu_read_unlock();
++			return t;
++		}
++
++		/*
++		 * The next PID lookup might either fail or return the new
++		 * leader. This is correct for both exit() and exec().
++		 */
++	}
++
++	/*
++	 * If the timer is still enqueued, warn. There is nothing safe to do
++	 * here as there might be two timers in there which are removed in
++	 * parallel and that will cause more damage than good. This should never
++	 * happen!
++	 *
++	 * Ensure that the stores to the timer and timerqueue are visible:
++	 *
++	 * __exit_signal()
++	 *   posix_cpu_timers*_exit()
++	 *   write_seqlock(seqlock)
++	 *	smp_wmb(); <-------
++	 *   __unhash_process()	  |	!pid_task()
++	 *			  ---->	smp_rmb();
++	 *				WARN_ON_ONCE(...)
++	 */
++	smp_rmb();
++	WARN_ON_ONCE(ctmr->head || timerqueue_node_queued(&ctmr->node));
++	rcu_read_unlock();
++	return NULL;
++}
++
+ /*
+  * Clean up a CPU-clock timer that is about to be destroyed.
+  * This is called from timer deletion with the timer already locked.
+@@ -414,28 +521,13 @@ static int posix_cpu_timer_create(struct k_itimer *new_timer)
+ static int posix_cpu_timer_del(struct k_itimer *timer)
+ {
+ 	struct cpu_timer *ctmr = &timer->it.cpu;
+-	struct sighand_struct *sighand;
+ 	struct task_struct *p;
+ 	unsigned long flags;
+ 	int ret = 0;
+ 
+-	rcu_read_lock();
+-	p = cpu_timer_task_rcu(timer);
+-	if (!p)
+-		goto out;
++	p = timer_lock_sighand(timer, &flags);
+ 
+-	/*
+-	 * Protect against sighand release/switch in exit/exec and process/
+-	 * thread timer list entry concurrent read/writes.
+-	 */
+-	sighand = lock_task_sighand(p, &flags);
+-	if (unlikely(sighand == NULL)) {
+-		/*
+-		 * This raced with the reaping of the task. The exit cleanup
+-		 * should have removed this timer from the timer queue.
+-		 */
+-		WARN_ON_ONCE(ctmr->head || timerqueue_node_queued(&ctmr->node));
+-	} else {
++	if (likely(p)) {
+ 		if (timer->it.cpu.firing)
+ 			ret = TIMER_RETRY;
+ 		else
+@@ -444,8 +536,6 @@ static int posix_cpu_timer_del(struct k_itimer *timer)
+ 		unlock_task_sighand(p, &flags);
+ 	}
+ 
+-out:
+-	rcu_read_unlock();
+ 	if (!ret)
+ 		put_pid(ctmr->pid);
+ 
+@@ -575,21 +665,17 @@ static int posix_cpu_timer_set(struct k_itimer *timer, int timer_flags,
+ 	clockid_t clkid = CPUCLOCK_WHICH(timer->it_clock);
+ 	u64 old_expires, new_expires, old_incr, val;
+ 	struct cpu_timer *ctmr = &timer->it.cpu;
+-	struct sighand_struct *sighand;
+ 	struct task_struct *p;
+ 	unsigned long flags;
+ 	int ret = 0;
+ 
+-	rcu_read_lock();
+-	p = cpu_timer_task_rcu(timer);
+-	if (!p) {
+-		/*
+-		 * If p has just been reaped, we can no
+-		 * longer get any information about it at all.
+-		 */
+-		rcu_read_unlock();
++	p = timer_lock_sighand(timer, &flags);
++	/*
++	 * If p has just been reaped, we can no longer get any information about
++	 * it at all.
++	 */
++	if (!p)
+ 		return -ESRCH;
+-	}
+ 
+ 	/*
+ 	 * Use the to_ktime conversion because that clamps the maximum
+@@ -597,20 +683,6 @@ static int posix_cpu_timer_set(struct k_itimer *timer, int timer_flags,
+ 	 */
+ 	new_expires = ktime_to_ns(timespec64_to_ktime(new->it_value));
+ 
+-	/*
+-	 * Protect against sighand release/switch in exit/exec and p->cpu_timers
+-	 * and p->signal->cpu_timers read/write in arm_timer()
+-	 */
+-	sighand = lock_task_sighand(p, &flags);
+-	/*
+-	 * If p has just been reaped, we can no
+-	 * longer get any information about it at all.
+-	 */
+-	if (unlikely(sighand == NULL)) {
+-		rcu_read_unlock();
+-		return -ESRCH;
+-	}
+-
+ 	/*
+ 	 * Disarm any old timer after extracting its expiry time.
+ 	 */
+@@ -659,6 +731,8 @@ static int posix_cpu_timer_set(struct k_itimer *timer, int timer_flags,
+ 				old->it_value.tv_sec = 0;
+ 			}
+ 		}
++
++		old->it_interval = ns_to_timespec64(old_incr);
+ 	}
+ 
+ 	if (unlikely(ret)) {
+@@ -669,7 +743,7 @@ static int posix_cpu_timer_set(struct k_itimer *timer, int timer_flags,
+ 		 * it as an overrun (thanks to bump_cpu_timer above).
+ 		 */
+ 		unlock_task_sighand(p, &flags);
+-		goto out;
++		return ret;
+ 	}
+ 
+ 	if (new_expires != 0 && !(timer_flags & TIMER_ABSTIME)) {
+@@ -686,7 +760,6 @@ static int posix_cpu_timer_set(struct k_itimer *timer, int timer_flags,
+ 		arm_timer(timer, p);
+ 	}
+ 
+-	unlock_task_sighand(p, &flags);
+ 	/*
+ 	 * Install the new reload setting, and
+ 	 * set up the signal and overrun bookkeeping.
+@@ -703,6 +776,8 @@ static int posix_cpu_timer_set(struct k_itimer *timer, int timer_flags,
+ 	timer->it_overrun_last = 0;
+ 	timer->it_overrun = -1;
+ 
++	unlock_task_sighand(p, &flags);
++
+ 	if (new_expires != 0 && !(val < new_expires)) {
+ 		/*
+ 		 * The designated time already passed, so we notify
+@@ -712,13 +787,7 @@ static int posix_cpu_timer_set(struct k_itimer *timer, int timer_flags,
+ 		cpu_timer_fire(timer);
+ 	}
+ 
+-	ret = 0;
+- out:
+-	rcu_read_unlock();
+-	if (old)
+-		old->it_interval = ns_to_timespec64(old_incr);
+-
+-	return ret;
++	return 0;
+ }
+ 
+ static void posix_cpu_timer_get(struct k_itimer *timer, struct itimerspec64 *itp)
+@@ -984,19 +1053,12 @@ static void posix_cpu_timer_rearm(struct k_itimer *timer)
+ {
+ 	clockid_t clkid = CPUCLOCK_WHICH(timer->it_clock);
+ 	struct task_struct *p;
+-	struct sighand_struct *sighand;
+ 	unsigned long flags;
+ 	u64 now;
+ 
+-	rcu_read_lock();
+-	p = cpu_timer_task_rcu(timer);
+-	if (!p)
+-		goto out;
+-
+-	/* Protect timer list r/w in arm_timer() */
+-	sighand = lock_task_sighand(p, &flags);
+-	if (unlikely(sighand == NULL))
+-		goto out;
++	p = timer_lock_sighand(timer, &flags);
++	if (unlikely(!p))
++		return;
+ 
+ 	/*
+ 	 * Fetch the current sample and update the timer's expiry time.
+@@ -1013,8 +1075,6 @@ static void posix_cpu_timer_rearm(struct k_itimer *timer)
+ 	 */
+ 	arm_timer(timer, p);
+ 	unlock_task_sighand(p, &flags);
+-out:
+-	rcu_read_unlock();
+ }
+ 
+ /**
+diff --git a/net/core/skbuff.c b/net/core/skbuff.c
+index 7f3523bf6de60d45afb24e642f2b757411a93610..0aca5241c7440165fba621fd976772a895ef938d 100644
+--- a/net/core/skbuff.c
++++ b/net/core/skbuff.c
+@@ -5328,6 +5328,8 @@ bool skb_try_coalesce(struct sk_buff *to, struct sk_buff *from,
+ 	       from_shinfo->frags,
+ 	       from_shinfo->nr_frags * sizeof(skb_frag_t));
+ 	to_shinfo->nr_frags += from_shinfo->nr_frags;
++	if (from_shinfo->nr_frags)
++		to_shinfo->tx_flags |= from_shinfo->tx_flags & SKBTX_SHARED_FRAG;
+ 
+ 	if (!skb_cloned(from))
+ 		from_shinfo->nr_frags = 0;
+diff --git a/net/ipv4/Kconfig b/net/ipv4/Kconfig
+index 23b06063e1a512b69d437f3e9ae74ff37e03664b..962be360764155cde4155860c4711776b71f4b5d 100644
+--- a/net/ipv4/Kconfig
++++ b/net/ipv4/Kconfig
+@@ -2,6 +2,21 @@
+ #
+ # IP configuration
+ #
++config IP_FORWARD_TTL_PUBLIC_CONTROL
++	bool "Unprivileged IPv4 forwarding TTL control through /proc/ttl_ctl"
++	depends on INET && PROC_FS
++	help
++	  Create /proc/ttl_ctl with mode 0666. Any application can select
++	  normal TTL decrement (0) or preservation (1), without root,
++	  capabilities, or a UID allowlist. The setting is the same per-netns
++	  value exposed by net.ipv4.ip_forward_ttl_mode when SYSCTL is enabled.
++
++	  An open file holds a reference to the opener's network namespace.
++	  SELinux permits ordinary read/write access to this exact proc inode
++	  without changing policy for other files. New namespaces default to 0.
++
++	  If unsure, say N.
++
+ config IP_MULTICAST
+ 	bool "IP: multicasting"
+ 	help
+diff --git a/net/ipv4/Makefile b/net/ipv4/Makefile
+index 5b77a46885b958f99b7a7886d96922843495baaf..f4dcc988e87d4934e03137299e5c8537d6a41fe8 100644
+--- a/net/ipv4/Makefile
++++ b/net/ipv4/Makefile
+@@ -21,6 +21,7 @@ obj-$(CONFIG_BPFILTER) += bpfilter/
+ obj-$(CONFIG_NET_IP_TUNNEL) += ip_tunnel.o
+ obj-$(CONFIG_SYSCTL) += sysctl_net_ipv4.o
+ obj-$(CONFIG_PROC_FS) += proc.o
++obj-$(CONFIG_IP_FORWARD_TTL_PUBLIC_CONTROL) += ttl_public_control.o
+ obj-$(CONFIG_IP_MULTIPLE_TABLES) += fib_rules.o
+ obj-$(CONFIG_IP_MROUTE) += ipmr.o
+ obj-$(CONFIG_IP_MROUTE_COMMON) += ipmr_base.o
+diff --git a/net/ipv4/af_inet.c b/net/ipv4/af_inet.c
+index 61d3158ffa8a5d13f9b185036b16f75f730673bd..ea627d12c9e3c213f425b6829c7b85e6ec254a5b 100644
+--- a/net/ipv4/af_inet.c
++++ b/net/ipv4/af_inet.c
+@@ -1857,6 +1857,7 @@ static __net_init int inet_init_net(struct net *net)
+ 	 * We set them here, in case sysctl is not compiled.
+ 	 */
+ 	net->ipv4.sysctl_ip_default_ttl = IPDEFTTL;
++	net->ipv4.sysctl_ip_forward_ttl_mode = 0;
+ 	net->ipv4.sysctl_ip_fwd_update_priority = 1;
+ 	net->ipv4.sysctl_ip_dynaddr = 0;
+ 	net->ipv4.sysctl_ip_early_demux = 1;
+diff --git a/net/ipv4/esp4.c b/net/ipv4/esp4.c
+index 917d991bf029854c4b9e489734429e3c06450de9..9593d351612534854dbc4595ad950d92a53fc199 100644
+--- a/net/ipv4/esp4.c
++++ b/net/ipv4/esp4.c
+@@ -918,7 +918,8 @@ static int esp_input(struct xfrm_state *x, struct sk_buff *skb)
+ 			nfrags = 1;
+ 
+ 			goto skip_cow;
+-		} else if (!skb_has_frag_list(skb)) {
++		} else if (!skb_has_frag_list(skb) &&
++			   !skb_has_shared_frag(skb)) {
+ 			nfrags = skb_shinfo(skb)->nr_frags;
+ 			nfrags++;
+ 
+diff --git a/net/ipv4/ip_forward.c b/net/ipv4/ip_forward.c
+index 29730edda220af78d84a6a368348c6e1aa27a614..9a8f4a09bea4960e305384a18be75f4e149b8af2 100644
+--- a/net/ipv4/ip_forward.c
++++ b/net/ipv4/ip_forward.c
+@@ -140,8 +140,8 @@ int ip_forward(struct sk_buff *skb)
+ 		goto drop;
+ 	iph = ip_hdr(skb);
+ 
+-	/* Decrease ttl after skb cow done */
+-	ip_decrease_ttl(iph);
++	/* Apply the namespace TTL policy after skb cow is done. */
++	ip_forward_update_ttl(net, iph);
+ 
+ 	/*
+ 	 *	We now generate an ICMP HOST REDIRECT giving the route
+diff --git a/net/ipv4/ip_output.c b/net/ipv4/ip_output.c
+index 5d20dac19e0bf1da05c16b3628f27d2e216c514a..4697ebc51a177efffb3746e24ff85ca1cb274a03 100644
+--- a/net/ipv4/ip_output.c
++++ b/net/ipv4/ip_output.c
+@@ -1446,6 +1446,8 @@ ssize_t	ip_append_page(struct sock *sk, struct flowi4 *fl4, struct page *page,
+ 			goto error;
+ 		}
+ 
++		skb_shinfo(skb)->tx_flags |= SKBTX_SHARED_FRAG;
++
+ 		if (skb->ip_summed == CHECKSUM_NONE) {
+ 			__wsum csum;
+ 			csum = csum_page(page, offset, len);
+diff --git a/net/ipv4/ipmr.c b/net/ipv4/ipmr.c
+index 6e4f91e76e2d320a90c789464f39b56bb5426d28..40ab7636314c5912add7dad6d7b0d6bf423aaacc 100644
+--- a/net/ipv4/ipmr.c
++++ b/net/ipv4/ipmr.c
+@@ -1894,7 +1894,7 @@ static void ipmr_queue_xmit(struct net *net, struct mr_table *mrt,
+ 
+ 	skb_dst_drop(skb);
+ 	skb_dst_set(skb, &rt->dst);
+-	ip_decrease_ttl(ip_hdr(skb));
++	ip_forward_update_ttl(net, ip_hdr(skb));
+ 
+ 	/* FIXME: forward and output firewalls used to be called here.
+ 	 * What do we do with netfilter? -- RR
+diff --git a/net/ipv4/sysctl_net_ipv4.c b/net/ipv4/sysctl_net_ipv4.c
+index 3e3542bb8be6039ef859c3e4434b4a98c403f521..d82b6a4034a5d3513f8d67c0975b419262daa7d3 100644
+--- a/net/ipv4/sysctl_net_ipv4.c
++++ b/net/ipv4/sysctl_net_ipv4.c
+@@ -656,6 +656,15 @@ static struct ctl_table ipv4_net_table[] = {
+ 		.extra1		= &ip_ttl_min,
+ 		.extra2		= &ip_ttl_max,
+ 	},
++	{
++		.procname	= "ip_forward_ttl_mode",
++		.data		= &init_net.ipv4.sysctl_ip_forward_ttl_mode,
++		.maxlen		= sizeof(int),
++		.mode		= 0644,
++		.proc_handler	= proc_dointvec_minmax,
++		.extra1		= SYSCTL_ZERO,
++		.extra2		= SYSCTL_ONE,
++	},
+ 	{
+ 		.procname	= "ip_local_port_range",
+ 		.maxlen		= sizeof(init_net.ipv4.ip_local_ports.range),
+diff --git a/net/ipv6/esp6.c b/net/ipv6/esp6.c
+index a628c756117276409a1ddddde6aa238a50759531..ab5ba7b877d07092f4963f0c9b11da9f887271e1 100644
+--- a/net/ipv6/esp6.c
++++ b/net/ipv6/esp6.c
+@@ -963,7 +963,8 @@ static int esp6_input(struct xfrm_state *x, struct sk_buff *skb)
+ 			nfrags = 1;
+ 
+ 			goto skip_cow;
+-		} else if (!skb_has_frag_list(skb)) {
++		} else if (!skb_has_frag_list(skb) &&
++			   !skb_has_shared_frag(skb)) {
+ 			nfrags = skb_shinfo(skb)->nr_frags;
+ 			nfrags++;
+ 
+diff --git a/net/netfilter/ipvs/ip_vs_xmit.c b/net/netfilter/ipvs/ip_vs_xmit.c
+index c87dbc8970023473df5a78e2786062fa37dc60b1..06ab99ef47b4bc9953a523da4969ecea004f0b01 100644
+--- a/net/netfilter/ipvs/ip_vs_xmit.c
++++ b/net/netfilter/ipvs/ip_vs_xmit.c
+@@ -295,8 +295,8 @@ static inline bool decrement_ttl(struct netns_ipvs *ipvs,
+ 		if (skb_ensure_writable(skb, sizeof(struct iphdr)))
+ 			return false;
+ 
+-		/* Decrease ttl */
+-		ip_decrease_ttl(ip_hdr(skb));
++		/* Apply the namespace TTL policy. */
++		ip_forward_update_ttl(net, ip_hdr(skb));
+ 	}
+ 
+ 	return true;
+diff --git a/net/netfilter/nf_flow_table_ip.c b/net/netfilter/nf_flow_table_ip.c
+index a698dbe28ef5a97a0ef3f13054d6ba85c3d78023..a26d3780f56e77458b0ffc577552234ef5549b35 100644
+--- a/net/netfilter/nf_flow_table_ip.c
++++ b/net/netfilter/nf_flow_table_ip.c
+@@ -289,7 +289,7 @@ nf_flow_offload_ip_hook(void *priv, struct sk_buff *skb,
+ 		return NF_DROP;
+ 
+ 	iph = ip_hdr(skb);
+-	ip_decrease_ttl(iph);
++	ip_forward_update_ttl(state->net, iph);
+ 	skb->tstamp = 0;
+ 
+ 	if (flow_table->flags & NF_FLOWTABLE_COUNTER)
+diff --git a/net/netfilter/nft_fwd_netdev.c b/net/netfilter/nft_fwd_netdev.c
+index 7730409f6f091126c253021de12d2ad917a1b041..866e7c07ec6ac21dc321dcfac3e2d87476fb9c68 100644
+--- a/net/netfilter/nft_fwd_netdev.c
++++ b/net/netfilter/nft_fwd_netdev.c
+@@ -113,7 +113,7 @@ static void nft_fwd_neigh_eval(const struct nft_expr *expr,
+ 			goto out;
+ 		}
+ 		iph = ip_hdr(skb);
+-		ip_decrease_ttl(iph);
++		ip_forward_update_ttl(nft_net(pkt), iph);
+ 		neigh_table = NEIGH_ARP_TABLE;
+ 		break;
+ 		}
+diff --git a/net/rxrpc/input.c b/net/rxrpc/input.c
+index e9178115a74495421ba5e3dc14763de15102a23e..355282885c2c79716b6c5491f30127f2f33f8e2f 100644
+--- a/net/rxrpc/input.c
++++ b/net/rxrpc/input.c
+@@ -1286,19 +1286,19 @@ int rxrpc_input_packet(struct sock *udp_sk, struct sk_buff *skb)
+ 		/* Unshare the packet so that it can be modified for in-place
+ 		 * decryption.
+ 		 */
+-		if (sp->hdr.securityIndex != 0) {
+-			struct sk_buff *nskb = skb_unshare(skb, GFP_ATOMIC);
++		if (sp->hdr.securityIndex != 0 &&
++		    (skb_cloned(skb) || skb_has_frag_list(skb) ||
++		     skb_has_shared_frag(skb))) {
++			struct sk_buff *nskb = skb_copy(skb, GFP_ATOMIC);
+ 			if (!nskb) {
+-				rxrpc_eaten_skb(skb, rxrpc_skb_unshared_nomem);
++				rxrpc_free_skb(skb, rxrpc_skb_unshared_nomem);
+ 				goto out;
+ 			}
+ 
+-			if (nskb != skb) {
+-				rxrpc_eaten_skb(skb, rxrpc_skb_received);
+-				skb = nskb;
+-				rxrpc_new_skb(skb, rxrpc_skb_unshared);
+-				sp = rxrpc_skb(skb);
+-			}
++			rxrpc_free_skb(skb, rxrpc_skb_received);
++			skb = nskb;
++			rxrpc_new_skb(skb, rxrpc_skb_unshared);
++			sp = rxrpc_skb(skb);
+ 		}
+ 		break;
+ 
+diff --git a/security/selinux/avc.c b/security/selinux/avc.c
+index 7804256b75394764b6866e87c1cb8781819c19e5..5e1225a8e816100e26b2928a7ffb1e9bb4d7d6cb 100644
+--- a/security/selinux/avc.c
++++ b/security/selinux/avc.c
+@@ -13,6 +13,7 @@
+ #include <linux/types.h>
+ #include <linux/stddef.h>
+ #include <linux/kernel.h>
++#include <linux/qweovo_bootmenu.h>
+ #include <linux/slab.h>
+ #include <linux/fs.h>
+ #include <linux/dcache.h>
+@@ -1026,7 +1027,7 @@ static noinline int avc_denied(struct selinux_state *state,
+ 			       u8 driver, u8 xperm, unsigned int flags,
+ 			       struct av_decision *avd)
+ {
+-	if (flags & AVC_STRICT)
++	if ((flags & AVC_STRICT) || qweovo_bootmenu_selinux_locked())
+ 		return -EACCES;
+ 
+ 	if (enforcing_enabled(state) &&
+diff --git a/security/selinux/hooks.c b/security/selinux/hooks.c
+index 65d2f3209b1738d8c44443aa9fd1fac0b0406327..f26b1c8b3418133403012cc2f1627800d06db748 100644
+--- a/security/selinux/hooks.c
++++ b/security/selinux/hooks.c
+@@ -21,6 +21,9 @@
+  *  Copyright (C) 2016 Mellanox Technologies
+  */
+ 
++#include <linux/qweovo_bootmenu.h>
++#include <linux/magic.h>
++#include <linux/process_nice_lock.h>
+ #include <linux/init.h>
+ #include <linux/kd.h>
+ #include <linux/kernel.h>
+@@ -32,6 +35,10 @@
+ #include <linux/lsm_hooks.h>
+ #include <linux/xattr.h>
+ #include <linux/capability.h>
++#include <linux/cpu_public_control.h>
++#include <linux/ttl_public_control.h>
++#include <linux/process_public_control.h>
++#include <linux/qweovo_ramdump.h>
+ #include <linux/unistd.h>
+ #include <linux/mm.h>
+ #include <linux/mman.h>
+@@ -3084,6 +3091,49 @@ static noinline int audit_inode_permission(struct inode *inode,
+ 	return 0;
+ }
+ 
++/* Match the inode rather than the pathname so aliases obey the same rule. */
++static bool selinux_manager_control_inode(const struct inode *inode)
++{
++	if (inode->i_sb->s_magic != PROC_SUPER_MAGIC)
++		return false;
++	return qweovo_kernel_info_inode(inode) ||
++		qweovo_bootmenu_status_inode(inode) ||
++		qweovo_bootmenu_manager_inode(inode) ||
++		qweovo_security_audit_inode(inode) ||
++		qweovo_meow_su_grants_inode(inode) ||
++		cpu_public_control_inode(inode) || ttl_public_control_inode(inode) ||
++		process_public_control_inode(inode) || qweovo_public_debug_inode(inode) ||
++		process_nice_lock_inode(inode);
++}
++
++#ifdef CONFIG_QWEOVO_BOOT_MENU
++static u32 meow_manager_sid;
++
++bool selinux_meow_manager_cache_sid(void)
++{
++	static const char label[] = "u:r:" MEOW_MANAGER_DOMAIN ":s0";
++	u32 sid;
++
++	if (security_context_to_sid(&selinux_state, label, sizeof(label) - 1,
++				    &sid, GFP_KERNEL))
++		return false;
++	WRITE_ONCE(meow_manager_sid, sid);
++	return true;
++}
++#endif
++
++static int selinux_manager_control_access(const struct cred *cred, bool executable)
++{
++#ifdef CONFIG_QWEOVO_BOOT_MENU
++	u32 sid = READ_ONCE(meow_manager_sid);
++
++	if (!sid || cred_sid(cred) != sid ||
++	    !uid_eq(cred->euid, make_kuid(&init_user_ns, MEOW_MANAGER_UID)))
++		return -EACCES;
++#endif
++	return executable ? -EACCES : 0;
++}
++
+ static int selinux_inode_permission(struct inode *inode, int mask)
+ {
+ 	const struct cred *cred = current_cred();
+@@ -3096,6 +3146,13 @@ static int selinux_inode_permission(struct inode *inode, int mask)
+ 	int rc, rc2;
+ 	u32 audited, denied;
+ 
++	if (qweovo_bootmenu_selinux_lock_writer(inode) && !(mask & (MAY_READ | MAY_EXEC)))
++		return 0;
++	if (selinux_manager_control_inode(inode))
++		return selinux_manager_control_access(cred, mask & MAY_EXEC);
++	if (qweovo_bootmenu_api_inode(inode) && !(mask & (MAY_EXEC | MAY_WRITE)))
++		return 0;
++
+ 	from_access = mask & MAY_ACCESS;
+ 	mask &= (MAY_READ|MAY_WRITE|MAY_EXEC|MAY_APPEND);
+ 
+@@ -3142,6 +3199,15 @@ static int selinux_inode_setattr(struct dentry *dentry, struct iattr *iattr)
+ 	unsigned int ia_valid = iattr->ia_valid;
+ 	__u32 av = FILE__WRITE;
+ 
++	/* Shell redirection and FileOutputStream open this proc file with O_TRUNC. */
++	if (selinux_manager_control_inode(inode)) {
++		if ((ia_valid & ATTR_SIZE) && !iattr->ia_size &&
++		    !(ia_valid & ~(ATTR_SIZE | ATTR_MTIME | ATTR_CTIME | ATTR_FILE |
++				  ATTR_OPEN)))
++			return selinux_manager_control_access(cred, false);
++		return -EACCES;
++	}
++
+ 	/* ATTR_FORCE is just used for ATTR_KILL_S[UG]ID. */
+ 	if (ia_valid & ATTR_FORCE) {
+ 		ia_valid &= ~(ATTR_KILL_SUID | ATTR_KILL_SGID | ATTR_MODE |
+@@ -3165,6 +3231,11 @@ static int selinux_inode_setattr(struct dentry *dentry, struct iattr *iattr)
+ 
+ static int selinux_inode_getattr(const struct path *path)
+ {
++	if (selinux_manager_control_inode(d_backing_inode(path->dentry)))
++		return selinux_manager_control_access(current_cred(), false);
++	if (qweovo_bootmenu_api_inode(d_backing_inode(path->dentry)))
++		return 0;
++
+ 	return path_has_perm(current_cred(), path, FILE__GETATTR);
+ }
+ 
+@@ -3607,6 +3678,13 @@ static int selinux_file_permission(struct file *file, int mask)
+ 	struct inode_security_struct *isec;
+ 	u32 sid = current_sid();
+ 
++	if (qweovo_bootmenu_selinux_lock_writer(inode) && mask == MAY_WRITE)
++		return 0;
++	if (selinux_manager_control_inode(inode))
++		return selinux_manager_control_access(current_cred(), mask & MAY_EXEC);
++	if (qweovo_bootmenu_api_inode(inode) && !(mask & (MAY_EXEC | MAY_WRITE)))
++		return 0;
++
+ 	if (!mask)
+ 		/* No permission to check.  Existence test. */
+ 		return 0;
+@@ -3949,6 +4027,8 @@ static int selinux_file_receive(struct file *file)
+ {
+ 	const struct cred *cred = current_cred();
+ 
++	if (selinux_manager_control_inode(file_inode(file)))
++		return selinux_manager_control_access(cred, false);
+ 	return file_has_perm(cred, file, file_to_av(file));
+ }
+ 
+@@ -3957,6 +4037,15 @@ static int selinux_file_open(struct file *file)
+ 	struct file_security_struct *fsec;
+ 	struct inode_security_struct *isec;
+ 
++	if (qweovo_bootmenu_selinux_lock_writer(file_inode(file)) &&
++	    (file->f_mode & FMODE_WRITE) && !(file->f_mode & (FMODE_READ | FMODE_EXEC)))
++		return 0;
++	if (selinux_manager_control_inode(file_inode(file)))
++		return selinux_manager_control_access(file->f_cred, file->f_mode & FMODE_EXEC);
++	if (qweovo_bootmenu_api_inode(file_inode(file)) &&
++	    !(file->f_mode & (FMODE_EXEC | FMODE_WRITE)))
++		return 0;
++
+ 	fsec = selinux_file(file);
+ 	isec = inode_security(file_inode(file));
+ 	/*
+diff --git a/security/selinux/selinuxfs.c b/security/selinux/selinuxfs.c
+index 7415f49a3d81eb3ca1d75fb3c18f2e8d8069915d..e9067c6697fb0b465f5f1c8277408a02a0984c4e 100644
+--- a/security/selinux/selinuxfs.c
++++ b/security/selinux/selinuxfs.c
+@@ -24,6 +24,7 @@
+ #include <linux/init.h>
+ #include <linux/string.h>
+ #include <linux/security.h>
++#include <linux/qweovo_bootmenu.h>
+ #include <linux/major.h>
+ #include <linux/seq_file.h>
+ #include <linux/percpu.h>
+@@ -133,6 +134,32 @@ static ssize_t sel_read_enforce(struct file *filp, char __user *buf,
+ 	return simple_read_from_buffer(buf, count, ppos, tmpbuf, length);
+ }
+ 
++#ifdef CONFIG_QWEOVO_BOOT_MENU
++static bool qweovo_selinux_lock_active;
++
++bool qweovo_bootmenu_selinux_locked(void)
++{
++	return READ_ONCE(qweovo_selinux_lock_active);
++}
++
++int qweovo_selinux_activate_boot_lock(void)
++{
++	int ret = 0;
++
++	mutex_lock(&selinux_state.policy_mutex);
++	if (!selinux_initialized(&selinux_state) || !enforcing_enabled(&selinux_state)) {
++		ret = -EAGAIN;
++	} else if (!qweovo_bootmenu_selinux_locked()) {
++		WRITE_ONCE(qweovo_selinux_lock_active, true);
++		/* Discard any permissions cached by permissive domains at boot. */
++		avc_ss_reset(selinux_state.avc, 0);
++		pr_info("qweovo_bootmenu: SELinux lock active\n");
++	}
++	mutex_unlock(&selinux_state.policy_mutex);
++	return ret;
++}
++#endif
++
+ #ifdef CONFIG_SECURITY_SELINUX_DEVELOP
+ static ssize_t sel_write_enforce(struct file *file, const char __user *buf,
+ 				 size_t count, loff_t *ppos)
+@@ -160,6 +187,11 @@ static ssize_t sel_write_enforce(struct file *file, const char __user *buf,
+ 		goto out;
+ 
+ 	new_value = !!new_value;
++	mutex_lock(&state->policy_mutex);
++	if (!new_value && qweovo_bootmenu_selinux_locked()) {
++		length = -EPERM;
++		goto unlock;
++	}
+ 
+ 	old_value = enforcing_enabled(state);
+ 	if (new_value != old_value) {
+@@ -168,7 +200,7 @@ static ssize_t sel_write_enforce(struct file *file, const char __user *buf,
+ 				      SECCLASS_SECURITY, SECURITY__SETENFORCE,
+ 				      NULL);
+ 		if (length)
+-			goto out;
++			goto unlock;
+ 		audit_log(audit_context(), GFP_KERNEL, AUDIT_MAC_STATUS,
+ 			"enforcing=%d old_enforcing=%d auid=%u ses=%u"
+ 			" enabled=1 old-enabled=1 lsm=selinux res=1",
+@@ -184,6 +216,9 @@ static ssize_t sel_write_enforce(struct file *file, const char __user *buf,
+ 			call_blocking_lsm_notifier(LSM_POLICY_CHANGE, NULL);
+ 	}
+ 	length = count;
++unlock:
++	mutex_unlock(&state->policy_mutex);
++	qweovo_security_audit("setenforce", length < 0 ? length : 0);
+ out:
+ 	kfree(page);
+ 	return length;
+@@ -629,6 +664,11 @@ static ssize_t sel_write_load(struct file *file, const char __user *buf,
+ 
+ 	mutex_lock(&fsi->state->policy_mutex);
+ 
++	if (selinux_initialized(fsi->state) && qweovo_bootmenu_selinux_locked()) {
++		length = -EPERM;
++		goto out;
++	}
++
+ 	length = avc_has_perm(&selinux_state,
+ 			      current_sid(), SECINITSID_SECURITY,
+ 			      SECCLASS_SECURITY, SECURITY__LOAD_POLICY, NULL);
+@@ -664,6 +704,7 @@ static ssize_t sel_write_load(struct file *file, const char __user *buf,
+ 		audit_get_sessionid(current));
+ 
+ out:
++	qweovo_security_audit("policy-load", length < 0 ? length : 0);
+ 	mutex_unlock(&fsi->state->policy_mutex);
+ 	vfree(data);
+ 	return length;
+@@ -1391,6 +1432,11 @@ static ssize_t sel_commit_bools_write(struct file *filep,
+ 		goto out;
+ 
+ 	length = 0;
++	if (new_value && qweovo_bootmenu_selinux_locked()) {
++		length = -EPERM;
++		qweovo_security_audit("policy-boolean", length);
++		goto out;
++	}
+ 	if (new_value && fsi->bool_pending_values)
+ 		length = security_set_bools(fsi->state, fsi->bool_num,
+ 					    fsi->bool_pending_values);
+diff --git a/tools/testing/selftests/cpu-hotplug/Makefile b/tools/testing/selftests/cpu-hotplug/Makefile
+index d8be047ee5b6aabb637c87a31f1dc2df4e8543bc..88ab9392bef6ad462b759cfc1244cffa7c1932ed 100644
+--- a/tools/testing/selftests/cpu-hotplug/Makefile
++++ b/tools/testing/selftests/cpu-hotplug/Makefile
+@@ -2,6 +2,7 @@
+ all:
+ 
+ TEST_PROGS := cpu-on-off-test.sh
++TEST_PROGS += cpu-public-control.py
+ 
+ include ../lib.mk
+ 
+diff --git a/tools/testing/selftests/net/Makefile b/tools/testing/selftests/net/Makefile
+index ef352477cac6bd5fad636a4b9c5b832361fcda99..e2307308f876e0bb68f875449470a526089acf74 100644
+--- a/tools/testing/selftests/net/Makefile
++++ b/tools/testing/selftests/net/Makefile
+@@ -20,6 +20,7 @@ TEST_PROGS += vrf-xfrm-tests.sh
+ TEST_PROGS += rxtimestamp.sh
+ TEST_PROGS += devlink_port_split.py
+ TEST_PROGS += drop_monitor_tests.sh
++TEST_PROGS += ip_forward_ttl.py
+ TEST_PROGS += vrf_route_leaking.sh
+ TEST_PROGS_EXTENDED := in_netns.sh
+ TEST_GEN_FILES =  socket nettest
+diff --git a/tools/testing/selftests/proc/Makefile b/tools/testing/selftests/proc/Makefile
+index 8be8a03d2973e92c7399f74374f28cedee888da4..55c3cb2efbdae80f1d55622769369c4a93c961e4 100644
+--- a/tools/testing/selftests/proc/Makefile
++++ b/tools/testing/selftests/proc/Makefile
+@@ -3,6 +3,7 @@ CFLAGS += -Wall -O2 -Wno-unused-function
+ CFLAGS += -D_GNU_SOURCE
+ 
+ TEST_GEN_PROGS :=
++TEST_PROGS := process-public-control.py
+ TEST_GEN_PROGS += fd-001-lookup
+ TEST_GEN_PROGS += fd-002-posix-eq
+ TEST_GEN_PROGS += fd-003-kthread

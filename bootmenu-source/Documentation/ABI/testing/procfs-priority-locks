@@ -1,0 +1,38 @@
+What:           /proc/priority_locks
+Date:           October 2026
+Contact:        QWEOVO kernel maintainer
+Description:
+                Runtime UID-wide static nice rules for Android application UIDs.
+                Public read/write interface (0666); no root requirement.
+
+                Read: TSV header uid<TAB>nice<TAB>updated_ns, one row per rule.
+                updated_ns is a decimal boot-time nanosecond token; treat as
+                a string. Rules are listed even with no running process.
+
+                Write one ASCII command, at most 128 bytes including optional
+                trailing whitespace/newline:
+                  lock UID NICE
+                  unlock UID
+
+                UID is the full unsigned 32-bit UID; UID modulo 100000 must be
+                10000..19999. NICE is -20..19. Maximum 256 rules. Isolated and
+                system UIDs are excluded. No bulk-clear command is provided.
+                Duplicate lock updates a rule; unlock is idempotent. Invalid
+                input changes no rule (EINVAL/E2BIG); a full table yields ENOSPC.
+
+                Lock applies to current and future SCHED_NORMAL/SCHED_BATCH
+                threads through native nice and scheduler entry points, fork,
+                and credential publication. Same UID shares one rule across
+                processes/packages. Unlock removes the constraint and retains
+                current nice values. Rules survive application restarts and
+                are cleared by device reboot. No on-disk persistence.
+
+                RT, deadline, idle policy, PI boosts, cgroups, CPU affinity and
+                utilization clamps retain their native semantics. No new task
+                structure fields or exported symbols are introduced.
+
+                Discover with /proc/qweovo_info capability priority_uid_lock,
+                interfaces.priority_locks and priority_lock_configuration
+                api_version=1, scope=uid, supported_policies=[0,3]. Boot option
+                qweovo_uid_nice_lock=0 disables enforcement and rejects writes
+                with EOPNOTSUPP; capability reports false.

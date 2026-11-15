@@ -1,0 +1,6 @@
+pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS); repositories { google(); mavenCentral() } }
+rootProject.name = 'QweovoManager'
+include ':app'
+include ':authenticator'
+if (providers.gradleProperty('enableBrokerProbe').isPresent()) include ':broker-probe'

@@ -1,0 +1,24 @@
+What:		/proc/panic_ctl
+Date:		October 2026
+Contact:	QWEOVO custom-kernel maintainer
+Description:
+		Public (0666) panic policy configuration for this custom kernel.
+		Write one ASCII command of up to 128 bytes containing one or both
+		of oops_continue=0|1 and panic_action=reboot|ramdump. Read back
+		current settings, ramdump_ready, last_error and last_dump_request.
+		Defaults are oops_continue=0 and panic_action=reboot. Runtime
+		settings reset on reboot. Oops continuation is best-effort using
+		native panic_on_oops; fatal panic never returns. Selecting a mode
+		does not trigger a fault. Unsupported dump setup returns
+		EOPNOTSUPP; malformed input EINVAL; oversized input E2BIG.
+
+What:		/proc/qweovo_info
+Date:		October 2026
+Contact:	QWEOVO custom-kernel maintainer
+Description:
+		Read-only (0444) UTF-8 JSON identity and capabilities document.
+		schema_version=1 and kernel_id=qweovo.secret_kernel identify the
+		protocol. Exposes build release, capability flags, interface paths,
+		panic setting defaults/types/enum/current values, dump readiness
+		and input limits. Requires no root or Android permissions. Unknown
+		JSON fields must be ignored by compatible schema-1 clients.

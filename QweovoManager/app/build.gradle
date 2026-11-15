@@ -1,0 +1,47 @@
+plugins { id 'com.android.application' }
+def releaseProperties = new Properties()
+def releasePropertiesFile = rootProject.file('signing/local.properties')
+if (releasePropertiesFile.exists()) releasePropertiesFile.withInputStream { releaseProperties.load(it) }
+android {
+    namespace 'io.qweovo.manager'
+    compileSdk 34
+    defaultConfig {
+        applicationId 'io.qweovo.manager'; minSdk 27; targetSdk 35
+        versionCode 13; versionName '0.9.0'
+        resourceConfigurations += ['en', 'zh']
+    }
+    buildFeatures { buildConfig true }
+    sourceSets.main.java.srcDir rootProject.file('shared/src/main/java')
+    sourceSets.main.java.srcDir rootProject.file('manager-protocol/src/main/java')
+    bundle { language { enableSplit = false } }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    signingConfigs {
+        localRelease {
+            if (releasePropertiesFile.exists()) {
+                storeFile rootProject.file('signing/qweovo-manager.jks')
+                storePassword releaseProperties.getProperty('storePassword')
+                keyAlias releaseProperties.getProperty('keyAlias')
+                keyPassword releaseProperties.getProperty('keyPassword')
+            }
+        }
+    }
+    buildTypes {
+        debug { applicationIdSuffix '.debug' }
+        release { minifyEnabled false; signingConfig signingConfigs.localRelease }
+    }
+    testOptions { unitTests.returnDefaultValues = true }
+}
+dependencies {
+    implementation 'com.google.android.gms:play-services-code-scanner:16.1.0'
+    implementation 'com.journeyapps:zxing-android-embedded:4.3.0'
+    implementation 'androidx.appcompat:appcompat:1.7.0'
+    implementation 'androidx.core:core:1.13.1'
+    implementation 'androidx.core:core-ktx:1.13.1'
+    implementation 'androidx.annotation:annotation:1.9.1'
+    implementation 'androidx.recyclerview:recyclerview:1.1.0'
+    implementation 'com.google.android.material:material:1.12.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.2.1'
+    implementation 'org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.2.10'
+    implementation 'org.jetbrains.kotlin:kotlin-stdlib-jdk7:2.2.10'
+    testImplementation 'junit:junit:4.13.2'
+}

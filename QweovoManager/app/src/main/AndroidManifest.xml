@@ -1,0 +1,17 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+    <!-- The core process manager needs labels/icons for all visible running Apps. -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" tools:ignore="QueryAllPackagesPermission" />
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <application android:name=".MeowApplication" android:theme="@style/Theme.Qweovo" android:label="@string/app_name"
+        android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher"
+        android:allowBackup="false" android:dataExtractionRules="@xml/data_extraction_rules" android:supportsRtl="true">
+        <meta-data android:name="com.google.mlkit.vision.DEPENDENCIES" android:value="barcode_ui" />
+        <activity android:name=".SukisuScanActivity" android:exported="false"
+            android:screenOrientation="fullSensor" android:stateNotNeeded="true"
+            android:theme="@style/zxing_CaptureTheme" />
+        <activity android:name=".MainActivity" android:exported="true" android:windowSoftInputMode="adjustResize">
+            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
+        </activity>
+        <service android:name=".VerificationService" android:process=":verification" android:exported="false" />
+    </application>
+</manifest>

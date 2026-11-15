@@ -1,0 +1,78 @@
+What:		/proc/process_info
+Date:		October 2026
+Contact:		Custom Android kernel maintainer
+Description:
+		CONFIG_PROCESS_PUBLIC_CONTROL creates this read-only 0444 task
+		metadata interface. All users can list all tasks visible in the
+		PID namespace captured at open, regardless of UID or hidepid.
+		Normal Android apps see the system's shared PID namespace.
+
+		The first line names tab-separated version-1 columns:
+		tid tgid ppid uid state policy nice rt_priority cpu start_ns
+		group_start_ns kernel comm argv0
+
+		Each following line represents one thread, including leaders
+		(tid == tgid) and visible kernel threads (kernel == 1). UID is the
+		initial user namespace Linux UID. CPU is the sampled current/last
+		CPU, not an affinity mask. State is the usual single-letter task
+		state; policy is the Linux numeric scheduler policy.
+
+		start_ns is the task's raw start_boottime in nanoseconds; the
+		group_start_ns token belongs to its group leader. Treat tokens as
+		opaque unsigned 64-bit decimal integers, not floating point values.
+		comm is at most TASK_COMM_LEN-1 bytes. argv0 is bounded to 256
+		bytes and ends at its first NUL; other arguments and environment
+		are not exported. Unavailable argv0 is empty. Tabs, CR, LF and
+		backslashes in strings are escaped as backslash plus three octal
+		digits. Names can contain truncated/non-UTF-8 bytes; decode safely.
+
+		Enumeration is a live walk, not an atomic full-system snapshot.
+		Tasks may exit, appear or change fields during reads. Kernel task
+		and PID-namespace references protect iterator lifetime; no RCU
+		lock is held across mm access. No register or kernel address data
+		is provided. This node does not grant access to other /proc files.
+
+What:		/proc/process_ctl
+Date:		October 2026
+Contact:		Custom Android kernel maintainer
+Description:
+		This 0666 node lets any application change nice across UIDs,
+		without root, capabilities, or a UID allowlist. One complete
+		command per write, at most 128 bytes:
+
+		  thread TID START_NS NICE
+		  process TGID GROUP_START_NS NICE
+
+		NICE must be -20..19 (smaller gives greater scheduling weight).
+		Use tokens from process_info. Wrong tokens return ESTALE; absent
+		tasks return ESRCH. IDs are resolved in the PID namespace captured
+		when this file was opened. A process command requires a leader ID
+		and modifies a snapshot of its live threads, up to 4096 threads.
+		Groups growing beyond the allocated snapshot return E2BIG and
+		can be retried. New threads after collection are not guaranteed
+		to be included. Targets are referenced before any scheduling call.
+
+		Only userspace SCHED_NORMAL/SCHED_BATCH tasks are supported.
+		Kernel threads and other policies return EOPNOTSUPP (a concurrent
+		policy change may instead cause EINVAL/EAGAIN). The internal
+		scheduler API preserves policy/reset-on-fork and user-defined
+		utilization clamps; non-user-defined clamps follow its defaults.
+		UID/capability checks are delegated by this interface only; the
+		normal scheduler syscalls and SELinux task policy are unchanged.
+
+		Success returns write size. Errors may occur after a process
+		command partially succeeded; there is no rollback. Seek the same
+		open read/write descriptor to 0 and read:
+		  updated=N error=ERRNO
+		This reports the last parsed operation for that descriptor, counting
+		successful thread operations, including already-satisfied values.
+		Parsing/copy errors leave the last parsed-operation report intact.
+		A new descriptor starts with updated=0 error=0. Refresh process_info
+		to inspect actual state after a partial error or concurrent writer.
+
+		Changes are one-shot; Android/system scheduling policy can later
+		change nice again. This does not force foreground status, oom_adj,
+		cgroups, CPU affinity, frequency, real-time priority or CPU share.
+		SELinux read/write/getattr/zero-length O_TRUNC exemptions use only
+		the two private proc inode markers. Other files and enforcing mode
+		are not changed. Namespace/mount visibility and other LSMs apply.

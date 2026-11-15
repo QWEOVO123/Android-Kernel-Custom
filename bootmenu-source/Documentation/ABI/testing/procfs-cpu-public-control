@@ -1,0 +1,55 @@
+What:		/proc/cpu_ctl
+Date:		October 2026
+Contact:		Custom Android kernel maintainer
+Description:
+		Available with CONFIG_CPU_PUBLIC_CONTROL=y. The kernel creates
+		this node with mode 0666. All users and applications can read
+		state and request global CPU hotplug operations, without root,
+		capabilities, a UID allowlist, or an exclusive controller.
+
+		Reading returns newline-terminated CPU lists:
+
+		possible: 0-7
+		present: 0-7
+		online: 0-7
+		active: 0-7
+		hotpluggable: 0-7
+
+		Send one complete ASCII command in each write:
+
+		  online N       Bring CPU N online.
+		  offline N      Take CPU N offline.
+		  set CPULIST    Request exactly this online CPU list.
+
+		For example, "set 0-3,6\n" requests CPUs 0,1,2,3,6. The maximum
+		write size is 4095 bytes. Embedded NUL bytes and multiple commands
+		in one write are not accepted. Repeating an already satisfied
+		online/offline request succeeds if the CPU supports the operation.
+
+		Requests use the standard device hotplug lock and device bus
+		callbacks, shared with the existing sysfs interface. Replacement
+		CPUs are brought online before any other CPUs are taken offline.
+		The existing CPU-core protection refuses to offline the last
+		active CPU. Empty masks and CPUs that are not present are rejected.
+		Protected CPUs and firmware restrictions are not overridden.
+
+		Successful writes return their byte count. Failures return a
+		negative errno, including EINVAL (bad command/list), E2BIG (input
+		too long), ENODEV (CPU unavailable), EPERM (protected CPU), EBUSY
+		(last active CPU or hotplug temporarily unavailable), or a bus/
+		firmware error. A batch is not a transaction: failures may leave
+		earlier successful operations in effect. Read the node again to
+		obtain actual state. Concurrent callers are serialized, without
+		an ownership or priority policy.
+
+		SELinux grants read/write, getattr, and the zero-length truncation
+		used by shell redirection/FileOutputStream only for the proc inode
+		carrying this driver's private marker. The check does not use a
+		pathname, UID, or a generic proc label. Execute and permission/
+		owner changes are not exempted, nor are other files. SELinux
+		enforcing mode remains enabled.
+
+		No hotplug state is forced at boot. Commands change the live CPU
+		state; they do not install persistent constraints on firmware,
+		thermal management, or vendor CPU policy. Mount namespace hiding,
+		read-only mounts, and other security modules remain independent.

@@ -1,0 +1,18 @@
+<resources>
+    <string name="app_name">Meow Authenticator</string>
+    <string name="no_key">导入加密授权密钥后，可以批准平板的 SukiSU 启动请求。</string>
+    <string name="key_ready">授权密钥已存入 Android Keystore\n%1$s</string>
+    <string name="key_unavailable">授权密钥不可用。</string>
+    <string name="import_key">导入授权密钥</string>
+    <string name="import_password">导入口令</string>
+    <string name="import_confirm">导入</string>
+    <string name="import_failed">导入失败。请检查 PKCS#12 文件、导入口令和手机锁屏凭据。</string>
+    <string name="hardware_required">手机未能以硬件强制身份验证的方式导入此密钥。</string>
+    <string name="scan_challenge">扫描平板质询</string>
+    <string name="invalid_challenge">二维码的质询格式无效。</string>
+    <string name="wrong_key">此质询的公钥指纹与手机内的授权密钥不匹配。</string>
+    <string name="approve_title">授权下次启动时选择 SukiSU</string>
+    <string name="approve_description">只确认你刚在平板发起的请求。密钥 %1$s</string>
+    <string name="sign_failed">无法签署此质询。</string>
+    <string name="response_title">请用平板 Manager 扫描</string>
+</resources>

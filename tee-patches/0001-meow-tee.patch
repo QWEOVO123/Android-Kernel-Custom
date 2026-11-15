@@ -1,0 +1,507 @@
+diff --git a/app/src/main/java/org/matrix/TEESimulator/App.kt b/app/src/main/java/org/matrix/TEESimulator/App.kt
+index 6979bb6644fbea509bb9db531ad1641857c5aea6..df2c78ab1aa228f773f1537ab6856bc9d369e200 100644
+--- a/app/src/main/java/org/matrix/TEESimulator/App.kt
++++ b/app/src/main/java/org/matrix/TEESimulator/App.kt
+@@ -15,6 +15,7 @@ import org.matrix.TEESimulator.interception.keystore.Keystore2Interceptor
+ import org.matrix.TEESimulator.interception.keystore.KeystoreInterceptor
+ import org.matrix.TEESimulator.interception.soter.SoterProcessSupervisor
+ import org.matrix.TEESimulator.logging.SystemLogger
++import org.matrix.TEESimulator.pki.KeyBoxManager
+ import org.matrix.TEESimulator.pki.NativeCertGen
+ import org.matrix.TEESimulator.util.AndroidDeviceUtils
+ 
+@@ -29,10 +30,12 @@ object App {
+     /**
+      * The main entry point of the TEESimulator application.
+      *
+-     * @param args Command line arguments (not used).
++     * @param args Pass --meow-boot when started by the embedded boot service.
+      */
+     @JvmStatic
+     fun main(args: Array<String>) {
++        val embedded = args.contentEquals(arrayOf("--meow-boot"))
++        ConfigurationManager.embeddedBoot = embedded
+         SystemLogger.info("Welcome to TEESimulator!")
+ 
+         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+@@ -44,28 +47,34 @@ object App {
+ 
+             // Spoof boot-state props before any hook attaches, so keystore2's
+             // cached snapshot reflects the spoofed values.
+-            BootStateManager.apply()
++            if (!embedded) BootStateManager.apply()
+ 
+             // Load the package configuration.
+             ConfigurationManager.initialize()
+ 
+-            // Initialize and start the appropriate keystore interceptors.
+-            initializeInterceptors()
+-
+-            // Set up the device's boot key and hash, which are crucial for attestation.
+-            AndroidDeviceUtils.setupBootKeyAndHash()
+-
+             // Android ships with a stripped-down Bouncy Castle provider under the name "BC".
+             // We must remove the system provider first to ensure the full Bouncy Castle library
+             // (packaged with the app) is used.
+             Security.removeProvider(BouncyCastleProvider.PROVIDER_NAME)
+             Security.addProvider(BouncyCastleProvider())
+ 
+-            NativeCertGen.initialize("/data/adb/modules/tricky_store/libcertgen.so")
++            if (embedded) {
++                NativeCertGen.initialize("/dev/.meow-tee/libcertgen.so", "/dev/.meow-tee")
++            } else {
++                NativeCertGen.initialize("/data/adb/modules/tricky_store/libcertgen.so")
++            }
++
++            if (embedded && KeyBoxManager.getAnyAttestationKey("keybox.xml") == null) {
++                SystemLogger.warning("No usable /data/keymaster/keybox.xml; skipping the interceptor.")
++                return
++            }
++
++            AndroidDeviceUtils.setupBootKeyAndHash()
++            initializeInterceptors()
+ 
+             // Mount the SOTER forge on the on-demand soterserver process. The supervisor
+             // binds and (re)injects on its own thread, returning at once so it never blocks the loop.
+-            SoterProcessSupervisor.start(systemContext)
++            if (!embedded) SoterProcessSupervisor.start(systemContext)
+ 
+             // This starts the message queue processing. It blocks here indefinitely
+             // processing messages until Looper.myLooper().quit() is called.
+diff --git a/app/src/main/java/org/matrix/TEESimulator/config/BootStateManager.kt b/app/src/main/java/org/matrix/TEESimulator/config/BootStateManager.kt
+index 5123ea910741001a07be2434f63cf24cdd47a7fb..123ecb35623887c735398c287107dd1451a2acce 100644
+--- a/app/src/main/java/org/matrix/TEESimulator/config/BootStateManager.kt
++++ b/app/src/main/java/org/matrix/TEESimulator/config/BootStateManager.kt
+@@ -76,7 +76,7 @@ object BootStateManager {
+     }
+ 
+     fun shouldSpoofBootProps(): Boolean =
+-        when (readBootPropsMode()) {
++        !ConfigurationManager.embeddedBoot && when (readBootPropsMode()) {
+             BootPropsMode.DISABLE -> false
+             BootPropsMode.AUTO -> !isOplusFamilyDevice()
+             BootPropsMode.FORCE -> true
+diff --git a/app/src/main/java/org/matrix/TEESimulator/config/ConfigurationManager.kt b/app/src/main/java/org/matrix/TEESimulator/config/ConfigurationManager.kt
+index c6b1a33e11d854d5b0be08714546903f360ec21d..92683d02582986fbc60300744feb99807fee241b 100644
+--- a/app/src/main/java/org/matrix/TEESimulator/config/ConfigurationManager.kt
++++ b/app/src/main/java/org/matrix/TEESimulator/config/ConfigurationManager.kt
+@@ -4,6 +4,7 @@ import android.content.pm.IPackageManager
+ import android.os.Build
+ import android.os.FileObserver
+ import android.os.IBinder
++import android.os.Process
+ import android.os.ServiceManager
+ import java.io.File
+ import java.util.concurrent.ConcurrentHashMap
+@@ -29,11 +30,13 @@ object ConfigurationManager {
+     }
+ 
+     // --- Configuration Paths ---
+-    const val CONFIG_PATH = "/data/adb/tricky_store"
++    var embeddedBoot = false
++    val CONFIG_PATH: String
++        get() = if (embeddedBoot) "/data/keymaster" else "/data/adb/tricky_store"
+     private const val TARGET_PACKAGES_FILE = "target.txt"
+     private const val PATCH_LEVEL_FILE = "security_patch.txt"
+     private const val DEFAULT_KEYBOX_FILE = "keybox.xml"
+-    private val configRoot = File(CONFIG_PATH)
++    private val configRoot by lazy { File(CONFIG_PATH) }
+ 
+     // --- In-Memory Configuration State ---
+     @Volatile private var packageModes = mapOf<String, Mode>()
+@@ -64,7 +67,7 @@ object ConfigurationManager {
+         }
+ 
+         // Initial load of all configuration files.
+-        loadTargetPackages(File(configRoot, TARGET_PACKAGES_FILE))
++        if (!embeddedBoot) loadTargetPackages(File(configRoot, TARGET_PACKAGES_FILE))
+         loadPatchLevelConfig(File(configRoot, PATCH_LEVEL_FILE))
+         // Start watching for any subsequent file changes.
+         ConfigObserver.startWatching()
+@@ -79,31 +82,30 @@ object ConfigurationManager {
+      * @return The name of the keybox file, or the default if none is specified.
+      */
+     fun getKeyboxFileForUid(uid: Int): String {
++        if (embeddedBoot) return DEFAULT_KEYBOX_FILE
+         val packages = getPackagesForUid(uid)
+         return packages.firstNotNullOfOrNull { pkg -> packageKeyboxes[pkg] } ?: DEFAULT_KEYBOX_FILE
+     }
+ 
+     fun shouldPatch(uid: Int): Boolean {
++        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !Process.isApplicationUid(uid)) {
++            return false
++        }
+         val mode = getPackageModeForUid(uid)
+         return mode == Mode.PATCH || mode == Mode.AUTO
+     }
+ 
+-    /** Determines if a new certificate needs to be generated for a given UID. */
+-    fun shouldGenerate(uid: Int): Boolean = getPackageModeForUid(uid) == Mode.GENERATE
++    /** Keystore2 generates for all application UIDs, including secondary users. */
++    fun shouldGenerate(uid: Int): Boolean =
++        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) Process.isApplicationUid(uid)
++        else getPackageModeForUid(uid) == Mode.GENERATE
+ 
+-    fun shouldSkipUid(uid: Int): Boolean = getPackageModeForUid(uid) == null
++    fun shouldSkipUid(uid: Int): Boolean =
++        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) !Process.isApplicationUid(uid)
++        else getPackageModeForUid(uid) == null
+ 
+-    fun isAutoMode(uid: Int): Boolean {
+-        for (pkg in getPackagesForUid(uid)) {
+-            when (packageModes[pkg]) {
+-                Mode.GENERATE,
+-                Mode.PATCH -> return false
+-                Mode.AUTO -> return true
+-                null -> continue
+-            }
+-        }
+-        return false
+-    }
++    fun isExplicitlyTargeted(uid: Int): Boolean =
++        getPackagesForUid(uid).any { it in packageModes }
+ 
+     private fun getPackageModeForUid(uid: Int): Mode? {
+         val packages = getPackagesForUid(uid)
+@@ -298,9 +300,10 @@ object ConfigurationManager {
+ 
+             val file = if (event != DELETE) File(configRoot, path) else null
+             when (path) {
+-                TARGET_PACKAGES_FILE ->
++                TARGET_PACKAGES_FILE -> if (!embeddedBoot) {
+                     file?.let { loadTargetPackages(it) }
+                         ?: SystemLogger.warning("$TARGET_PACKAGES_FILE was deleted.")
++                }
+                 PATCH_LEVEL_FILE ->
+                     file?.let { loadPatchLevelConfig(it) }
+                         ?: SystemLogger.warning("$PATCH_LEVEL_FILE was deleted.")
+diff --git a/app/src/main/java/org/matrix/TEESimulator/interception/keystore/shim/KeyMintSecurityLevelInterceptor.kt b/app/src/main/java/org/matrix/TEESimulator/interception/keystore/shim/KeyMintSecurityLevelInterceptor.kt
+index 93785770884d4a78ab5a9371528a557c1b4a7961..f4aabdf5ee7a55c3a16c8298ffeb3c52235f8e77 100644
+--- a/app/src/main/java/org/matrix/TEESimulator/interception/keystore/shim/KeyMintSecurityLevelInterceptor.kt
++++ b/app/src/main/java/org/matrix/TEESimulator/interception/keystore/shim/KeyMintSecurityLevelInterceptor.kt
+@@ -20,7 +20,6 @@ import java.security.SecureRandom
+ import java.security.cert.Certificate
+ import java.security.cert.CertificateFactory
+ import java.security.spec.PKCS8EncodedKeySpec
+-import java.util.Date
+ import java.util.concurrent.ConcurrentHashMap
+ import java.util.concurrent.ConcurrentLinkedDeque
+ import java.util.concurrent.Executors
+@@ -29,7 +28,6 @@ import java.util.concurrent.locks.LockSupport
+ import org.matrix.TEESimulator.attestation.AttestationBuilder
+ import org.matrix.TEESimulator.attestation.AttestationConstants
+ import org.matrix.TEESimulator.attestation.AttestationPatcher
+-import org.matrix.TEESimulator.attestation.DeviceAttestationService
+ import org.matrix.TEESimulator.attestation.KeyMintAttestation
+ import org.matrix.TEESimulator.config.ConfigurationManager
+ import org.matrix.TEESimulator.interception.core.BinderInterceptor
+@@ -74,6 +72,9 @@ class KeyMintSecurityLevelInterceptor(
+     ): TransactionResult {
+         when (code) {
+             GENERATE_KEY_TRANSACTION -> {
++                if (!ConfigurationManager.shouldGenerate(callingUid)) {
++                    return TransactionResult.ContinueAndSkipPost
++                }
+                 logTransaction(txId, transactionNames[code]!!, callingUid, callingPid)
+ 
+                 return handleGenerateKey(txId, callingUid, callingPid, data)
+@@ -222,76 +223,13 @@ class KeyMintSecurityLevelInterceptor(
+                 }
+             }
+         } else if (code == GENERATE_KEY_TRANSACTION) {
+-            logTransaction(txId, "post-${transactionNames[code]!!}", callingUid, callingPid)
+-
+-            val metadata: KeyMetadata =
+-                reply.readTypedObject(KeyMetadata.CREATOR)
+-                    ?: return TransactionResult.SkipTransaction
+-
++            // A native replacement must retire any generated key under the same alias.
+             data.enforceInterface(IKeystoreSecurityLevel.DESCRIPTOR)
+-            val keyDescriptor =
++            val descriptor =
+                 data.readTypedObject(KeyDescriptor.CREATOR)
+                     ?: return TransactionResult.SkipTransaction
+-            val keyId = KeyIdentifier(callingUid, keyDescriptor.alias)
+-
+-            val originalChain = CertificateHelper.getCertificateChain(metadata)
+-            if (originalChain == null || originalChain.size <= 1) {
+-                // Cache non-attested responses for KEY_ID getKeyEntry parity.
+-                // Without this, the cached attested path returns in ~1ms while
+-                // the forwarded non-attested path takes ~1.5ms, and
+-                // TimingSideChannelProbe flags the 1.55x ratio.
+-                cleanupKeyData(keyId)
+-                teeResponses[keyId] =
+-                    KeyEntryResponse().apply {
+-                        this.metadata = metadata
+-                        iSecurityLevel = original
+-                    }
+-                return TransactionResult.SkipTransaction
+-            }
+-
+-            data.readTypedObject(KeyDescriptor.CREATOR) // skip attestationKey
+-            val keyParams = data.createTypedArray(KeyParameter.CREATOR)
+-            val certNotBefore =
+-                keyParams
+-                    ?.find { it.tag == Tag.CERTIFICATE_NOT_BEFORE }
+-                    ?.value
+-                    ?.dateTime
+-                    ?.let { Date(it) }
+-            val certNotAfter =
+-                keyParams
+-                    ?.find { it.tag == Tag.CERTIFICATE_NOT_AFTER }
+-                    ?.value
+-                    ?.dateTime
+-                    ?.let { Date(it) }
+-
+-            val newChain =
+-                AttestationPatcher.patchCertificateChain(
+-                    originalChain,
+-                    callingUid,
+-                    certNotBefore,
+-                    certNotAfter,
+-                )
+-
+-            val key = metadata.key ?: return TransactionResult.SkipTransaction
+-            CertificateHelper.updateCertificateChain(metadata, newChain).getOrThrow()
+-            metadata.authorizations =
+-                InterceptorUtils.patchAuthorizations(metadata.authorizations, callingUid)
+-
+-            // PATCH decode point: the chain we rewrote onto a real TEE generateKey reply.
+-            AttestationDossier.log(callingUid, txId, "PATCH", newChain.asList())
+-
+-            cleanupKeyData(keyId)
+-            patchedChains[keyId] = newChain
+-            teeResponses[keyId] =
+-                KeyEntryResponse().apply {
+-                    this.metadata = metadata
+-                    iSecurityLevel = original
+-                }
+-            SystemLogger.debug(
+-                "Cached patched certificate chain for $keyId. (${key.alias} [${key.domain}, ${key.nspace}])"
+-            )
+-
+-            return InterceptorUtils.createTypedObjectReply(metadata)
++            val alias = descriptor.alias ?: return TransactionResult.SkipTransaction
++            cleanupKeyData(KeyIdentifier(callingUid, alias))
+         }
+         return TransactionResult.SkipTransaction
+     }
+@@ -539,11 +477,14 @@ class KeyMintSecurityLevelInterceptor(
+             data.setDataPosition(savedPos)
+             SystemLogger.uidLogRaw(callingUid, txId, "genkey-request", "len=${req.size}", req)
+         }
+-        val oversized = data.dataSize() > MAX_ALIAS_LENGTH
+-
+         return runCatching {
+                 data.enforceInterface(IKeystoreSecurityLevel.DESCRIPTOR)
+-                val keyDescriptor = data.readTypedObject(KeyDescriptor.CREATOR)!!
++                val keyDescriptor =
++                    data.readTypedObject(KeyDescriptor.CREATOR)
++                        ?: return TransactionResult.ContinueAndSkipPost
++                if (keyDescriptor.domain != Domain.APP || keyDescriptor.alias == null) {
++                    return TransactionResult.ContinueAndSkipPost
++                }
+                 val attestationKey = data.readTypedObject(KeyDescriptor.CREATOR)
+ 
+                 SystemLogger.debug(
+@@ -559,6 +500,10 @@ class KeyMintSecurityLevelInterceptor(
+                 // isAttestKeyRequest from the effective parameters.
+                 val params =
+                     data.createTypedArray(KeyParameter.CREATOR)!!.let { raw ->
++                        // These authorizations need enforcement by the native backend.
++                        if (raw.any { requiresNativeAuthorization(it.tag) }) {
++                            return TransactionResult.Continue
++                        }
+                         val stripUniqueId =
+                             raw.any { it.tag == Tag.INCLUDE_UNIQUE_ID } &&
+                                 !ConfigurationManager.checkSELinuxPermission(
+@@ -620,21 +565,6 @@ class KeyMintSecurityLevelInterceptor(
+                     )
+                 }
+ 
+-                // Device-ID attestation (IMEI/MEID/serial) is a factory-provisioned capability the
+-                // real TEE frequently cannot satisfy (it returns CANNOT_ATTEST_IDS). A privileged
+-                // caller — shell/system, e.g. the Key Attestation app via Shizuku — is entitled to
+-                // request it, but arrives un-targeted, so don't skip it: it must reach the forge
+-                // path below. The permission gate still rejects ordinary apps further down.
+-                if (
+-                    ConfigurationManager.shouldSkipUid(callingUid) &&
+-                        attestationKey == null &&
+-                        !isAttestKeyRequest &&
+-                        !hasDeviceIdAttestation
+-                ) {
+-                    logProbe("SKIP")
+-                    return TransactionResult.ContinueAndSkipPost
+-                }
+-
+                 SystemLogger.trace {
+                     "[TRACE-$txId] generateKey alias=${keyDescriptor.alias} algo=${parsedParams.algorithm} challenge=${parsedParams.attestationChallenge?.size ?: "null"} serial=${parsedParams.serial != null} imei=${parsedParams.imei != null} noAuth=${parsedParams.noAuthRequired} purposes=${parsedParams.purpose}"
+                 }
+@@ -691,17 +621,12 @@ class KeyMintSecurityLevelInterceptor(
+                     return InterceptorUtils.createErrorReply(KEYMINT_CANNOT_ATTEST_IDS)
+                 }
+ 
+-                val isSymmetric =
+-                    parsedParams.algorithm == Algorithm.AES ||
+-                        parsedParams.algorithm == Algorithm.HMAC ||
+-                        parsedParams.algorithm == Algorithm.TRIPLE_DES
+-
+                 if (securityLevel == SecurityLevel.STRONGBOX && !isStrongBoxCapable(parsedParams)) {
+                     SystemLogger.info(
+                         "[TX_ID: $txId] StrongBox-unsupported params (algo=${parsedParams.algorithm} size=${parsedParams.keySize}) → forwarding to HAL for rejection"
+                     )
+                     logProbe("FORWARD_HAL")
+-                    return TransactionResult.ContinueAndSkipPost
++                    return TransactionResult.Continue
+                 }
+ 
+                 val keyId = KeyIdentifier(callingUid, keyDescriptor.alias)
+@@ -712,57 +637,16 @@ class KeyMintSecurityLevelInterceptor(
+                 // otherwise resurfaces and breaks the app's reassembled chain).
+                 if (generatedKeys.containsKey(keyId)) cleanupKeyData(keyId)
+ 
+-                // Device-ID attestation must be forged, not patched: the real TEE returns
+-                // CANNOT_ATTEST_IDS, so there is no real chain to patch — only a synthetic one
+-                // carrying the requested IDs and rooted under the keybox will satisfy the caller.
+-                // AUTO forges asymmetric attestation only when the real hardware cannot provision an
+-                // attestation key for that algorithm at the requested security level: a device may
+-                // attest RSA in the TEE yet not in StrongBox, so the probe must match the request.
+-                // Devices that can attest keep their genuine chain via PATCH, which strict callers
+-                // accept where a forgery is rejected.
+-                val strongBox = securityLevel == SecurityLevel.STRONGBOX
+-                val forceGenerate =
+-                    oversized ||
+-                        ConfigurationManager.shouldGenerate(callingUid) ||
+-                        isAttestKeyRequest ||
+-                        attestationKey != null ||
+-                        hasDeviceIdAttestation ||
+-                        (ConfigurationManager.isAutoMode(callingUid) &&
+-                            parsedParams.attestationChallenge != null &&
+-                            when (parsedParams.algorithm) {
+-                                Algorithm.RSA ->
+-                                    !DeviceAttestationService.isRsaAttestable(strongBox)
+-                                Algorithm.EC -> !DeviceAttestationService.isEcAttestable(strongBox)
+-                                else -> false
+-                            })
+-
+-                SystemLogger.trace {
+-                    "[TRACE-$txId] dispatch: forceGen=$forceGenerate hasChallenge=${challenge != null} isSymmetric=$isSymmetric isAttestKey=$isAttestKeyRequest"
+-                }
+-
+-                when {
+-                    forceGenerate -> {
+-                        logProbe("FORGE")
+-                        doSoftwareKeyGen(
+-                            txId,
+-                            callingUid,
+-                            keyDescriptor,
+-                            attestationKey,
+-                            parsedParams,
+-                            keyId,
+-                            isAttestKeyRequest,
+-                        )
+-                    }
+-                    parsedParams.attestationChallenge != null -> {
+-                        logProbe("PATCH")
+-                        TransactionResult.Continue
+-                    }
+-                    else -> {
+-                        logProbe("PASSTHROUGH")
+-                        cleanupKeyData(keyId)
+-                        TransactionResult.Continue
+-                    }
+-                }
++                logProbe("FORGE")
++                doSoftwareKeyGen(
++                    txId,
++                    callingUid,
++                    keyDescriptor,
++                    attestationKey,
++                    parsedParams,
++                    keyId,
++                    isAttestKeyRequest,
++                )
+             }
+             .getOrElse { ex ->
+                 SystemLogger.error("Error during generateKey handling for UID $callingUid.", ex)
+@@ -1495,7 +1379,6 @@ class KeyMintSecurityLevelInterceptor(
+ 
+         // Maximum alias length to prevent binder buffer exhaustion (Issue #109)
+         // Binder buffer is ~1MB; 256KB provides 4x safety margin for transaction overhead
+-        private const val MAX_ALIAS_LENGTH = 256 * 1024
+         private const val KEYMINT_INVALID_INPUT_LENGTH = -21
+         private const val KEYMINT_INVALID_ARGUMENT = -38
+         private const val RESPONSE_INVALID_ARGUMENT = 20
+@@ -1513,6 +1396,20 @@ class KeyMintSecurityLevelInterceptor(
+         private const val STRONGBOX_MAX_CONCURRENT_OPS = 4
+         private const val STRONGBOX_OP_WINDOW_NS = 10_000_000_000L // 10s
+ 
++        private fun requiresNativeAuthorization(tag: Int): Boolean =
++            when (tag) {
++                Tag.USER_SECURE_ID,
++                Tag.USER_AUTH_TYPE,
++                Tag.AUTH_TIMEOUT,
++                Tag.UNLOCKED_DEVICE_REQUIRED,
++                Tag.TRUSTED_USER_PRESENCE_REQUIRED,
++                Tag.TRUSTED_CONFIRMATION_REQUIRED,
++                Tag.EARLY_BOOT_ONLY,
++                Tag.BOOTLOADER_ONLY,
++                Tag.ROLLBACK_RESISTANCE -> true
++                else -> false
++            }
++
+         private fun isStrongBoxCapable(params: KeyMintAttestation): Boolean =
+             when (params.algorithm) {
+                 Algorithm.RSA -> params.keySize <= 2048
+diff --git a/app/src/main/java/org/matrix/TEESimulator/logging/SystemLogger.kt b/app/src/main/java/org/matrix/TEESimulator/logging/SystemLogger.kt
+index fb11b6a6568501db94d1ce4a7a0db455c834a522..847ae95f0e566d2d38fc6d0af438508b21073461 100644
+--- a/app/src/main/java/org/matrix/TEESimulator/logging/SystemLogger.kt
++++ b/app/src/main/java/org/matrix/TEESimulator/logging/SystemLogger.kt
+@@ -136,7 +136,7 @@ object SystemLogger {
+      * targeted in `target.txt`. This is the single scope gate for the diagnostic plane; it reuses
+      * the existing activation set, so no new configuration surface is introduced.
+      */
+-    fun isUidLogged(uid: Int): Boolean = isDebugBuild && !ConfigurationManager.shouldSkipUid(uid)
++    fun isUidLogged(uid: Int): Boolean = isDebugBuild && ConfigurationManager.isExplicitlyTargeted(uid)
+ 
+     /** Resolves a UID to its primary package name for log labelling, falling back to `uid:N`. */
+     private fun label(uid: Int): String =
+diff --git a/app/src/main/java/org/matrix/TEESimulator/pki/NativeCertGen.kt b/app/src/main/java/org/matrix/TEESimulator/pki/NativeCertGen.kt
+index 2ba5cc15a76c138ae074258996fdecbaa99f496c..cc013ded2d4ee367c9aab00adae7970d860db044 100644
+--- a/app/src/main/java/org/matrix/TEESimulator/pki/NativeCertGen.kt
++++ b/app/src/main/java/org/matrix/TEESimulator/pki/NativeCertGen.kt
+@@ -66,10 +66,10 @@ object NativeCertGen {
+     var isAvailable: Boolean = false
+         private set
+ 
+-    fun initialize(libraryPath: String) {
++    fun initialize(libraryPath: String, logDir: String = LOG_DIR) {
+         try {
+             System.load(libraryPath)
+-            initLogging(false, LOG_DIR)
++            initLogging(false, logDir)
+             isAvailable = true
+             SystemLogger.info("NativeCertGen: loaded libcertgen.so successfully")
+         } catch (e: UnsatisfiedLinkError) {
+diff --git a/app/src/main/java/org/matrix/TEESimulator/util/AndroidDeviceUtils.kt b/app/src/main/java/org/matrix/TEESimulator/util/AndroidDeviceUtils.kt
+index 21a04ff19a0720f96c59793ee993fd77b521801a..f0ed2cd37aca0c1b453ad9c3de1b483771f21b48 100644
+--- a/app/src/main/java/org/matrix/TEESimulator/util/AndroidDeviceUtils.kt
++++ b/app/src/main/java/org/matrix/TEESimulator/util/AndroidDeviceUtils.kt
+@@ -208,13 +208,13 @@ object AndroidDeviceUtils {
+     private fun generateRandomBytes(size: Int): ByteArray =
+         ByteArray(size).also { ThreadLocalRandom.current().nextBytes(it) }
+ 
+-    private val PERSIST_DIR = File("/data/adb/tricky_store")
++    private val persistDir by lazy { File(ConfigurationManager.CONFIG_PATH) }
+ 
+     private fun fileForProperty(propertyName: String): File =
+         when (propertyName) {
+-            "ro.boot.vbmeta.digest" -> File(PERSIST_DIR, "boot_hash.bin")
+-            "ro.boot.vbmeta.public_key_digest" -> File(PERSIST_DIR, "boot_key.bin")
+-            else -> File(PERSIST_DIR, "${propertyName.replace('.', '_')}.bin")
++            "ro.boot.vbmeta.digest" -> File(persistDir, "boot_hash.bin")
++            "ro.boot.vbmeta.public_key_digest" -> File(persistDir, "boot_key.bin")
++            else -> File(persistDir, "${propertyName.replace('.', '_')}.bin")
+         }
+ 
+     private fun persistToFile(propertyName: String, bytes: ByteArray) {

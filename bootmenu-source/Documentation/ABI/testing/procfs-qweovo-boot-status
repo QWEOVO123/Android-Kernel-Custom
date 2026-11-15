@@ -1,0 +1,18 @@
+What:           /proc/qweovo_boot_status
+Date:           November 2026
+Contact:        QWEOVO kernel maintainer
+Description:
+                Public read-only boot decision, mode 0444. No write operation.
+                Lines: schema_version=1, committed=0|1, sukisu=0|1,
+                custom=0|1, status_spoofer=0|1, persistence=none, mutable=false.
+
+                All features begin disabled. PID 1 may commit once using
+                the private inherited anonymous decision FD. Other processes
+                cannot commit, including children inheriting that FD. Closing
+                its final reference without a valid choice seals all disabled.
+                State is never persisted and cannot be changed after commit.
+
+                /proc/qweovo_info also reports boot_policy and the currently
+                available capabilities. Its stable identity remains readable
+                with public controls disabled. CONFIG_QWEOVO_BOOT_MENU=n
+                preserves the earlier always-available feature semantics.

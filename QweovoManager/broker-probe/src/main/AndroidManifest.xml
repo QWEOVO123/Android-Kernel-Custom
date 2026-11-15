@@ -1,0 +1,12 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <queries>
+        <package android:name="io.qweovo.manager" />
+    </queries>
+    <application android:allowBackup="false" android:label="Meow Binder validation">
+        <service android:name=".ReadOnlyBroker" android:process=":endpoint" android:exported="true" />
+    </application>
+    <instrumentation android:name=".BinderProbe$Manager"
+        android:targetPackage="io.qweovo.manager" />
+    <instrumentation android:name=".BinderProbe$OtherApp"
+        android:targetPackage="io.qweovo.brokerprobe" />
+</manifest>
